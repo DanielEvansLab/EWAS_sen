@@ -1,0 +1,91 @@
+---
+title: "EWAS and senescence"
+author: "Dan Evans"
+date: "Last update: `r format(Sys.time(), '%d %B, %Y')`"
+output: html_document
+---
+
+
+```{r, setup}
+knitr::opts_chunk$set(cache.lazy = FALSE)
+```
+# Load libraries
+```{r}
+library(knitr)
+library(tidyverse)
+library(multtest)
+```
+
+# Probe-wise association analysis
+
+# Format betas and sample sheet
+```{r}
+
+samp <- read_csv("../data/2019-9270\ Sample\ Sheet.csv")
+samp <- samp %>%
+	rename(sample_ID = Basename,
+	       expID = "External Sample ID")
+ewas <- read_csv("../data/data_noob_2020_0511_105908.csv")
+ewas <- ewas %>%
+	select(-X1)
+names(ewas) <- str_replace_all(names(ewas), pattern = "^X", replacement = "")
+
+#sample IDs in sample sheet in the same order as sample names in ewas betas file
+sum(names(ewas)[-1] != samp$sample_ID)
+sum(names(ewas)[-1] == samp$sample_ID)
+cbind(names(ewas)[-1] ,samp$sample_ID)
+names(ewas)[1] <- "probeID"
+
+#create new variables in sample sheet to indicate contrasts
+#Try ATV first
+samp <- samp %>%
+	mutate(ATV = ifelse(str_detect(expID, "\\+ ATV"), 1L, 0L))
+samp$ATV[str_detect(samp$expID, ".*ATV.*", negate = TRUE)] <- NA
+cbind(samp$ATV, samp$expID)
+
+#create matrix of betas for apply
+betaMat <- ewas %>%
+	select(-probeID) %>%
+	as.matrix
+
+dimnames(betaMat)[[1]] <- ewas$probeID
+
+```
+
+# Probe-wise analysis of senescence treatment
+
+```{r}
+
+lm_fun <- function(cg){
+  out <- tryCatch({
+    lm1 <- glm(ATV ~ cg, data = samp, family = "binomial", na.action = na.omit)
+    n1 <- length(resid(lm1))
+    b <- summary(lm1)$coefficients[2,1]
+    se <- summary(lm1)$coefficients[2,2]
+    p <- summary(lm1)$coefficients[2,4]
+    return(c(n1, b, se, p))
+  },
+  error = function(e) rep(NA, 4)
+  )
+}
+
+results <- apply(betaMat, 1, lm_fun)
+results <- t(results)
+colnames(results) <- c("N", "Beta", "SE", "P")
+resultsTB <- as_tibble(results)
+resultsTB <- resultsTB %>%
+	mutate(probeID = rownames(results)) %>%
+	select(probeID, everything())
+adjp1 <- mt.rawp2adjp(resultsTB[["P"]], proc = "BH")
+resultsTB <- resultsTB %>%
+	mutate(P_BH = adjp1$adjp[order(adjp1$index),"BH"])
+
+write_csv(resultsTB, "../results/probewise_ATV.csv")
+
+resultsTB_top <- resultsTB %>%
+	arrange(P) %>%
+	head(50)
+
+kable(resultsTB_top, digits = 8)
+```
+
