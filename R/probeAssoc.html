@@ -539,20 +539,18 @@ dimnames(betaMat)[[1]] &lt;- ewas$probeID</code></pre>
 <h1>Probe-wise analysis of senescence treatment</h1>
 <pre class="r"><code>lm_fun &lt;- function(cg){
   out &lt;- tryCatch({
-    lm1 &lt;- glm(ATV ~ cg, data = samp, link = &quot;binomial&quot;, na.action = na.omit)
-    n1 &lt;- length(resid(lm1))
-    b &lt;- summary(lm1)$coefficients[2,1]
-    se &lt;- summary(lm1)$coefficients[2,2]
-    p &lt;- summary(lm1)$coefficients[2,4]
-    return(c(n1, b, se, p))
+    lm1 &lt;- t.test(cg ~ ATV, data = samp, na.action = na.omit)
+    tstat &lt;- lm1$statistic
+    p &lt;- lm1$p.value
+    return(c(tstat, p))
   },
-  error = function(e) rep(NA, 4)
+  error = function(e) rep(NA, 2)
   )
 }
 
 results &lt;- apply(betaMat, 1, lm_fun)
 results &lt;- t(results)
-colnames(results) &lt;- c(&quot;N&quot;, &quot;Beta&quot;, &quot;SE&quot;, &quot;P&quot;)
+colnames(results) &lt;- c(&quot;T_STAT&quot;, &quot;P&quot;)
 resultsTB &lt;- as_tibble(results)
 resultsTB &lt;- resultsTB %&gt;%
     mutate(probeID = rownames(results)) %&gt;%
@@ -572,413 +570,311 @@ kable(resultsTB_top, digits = 8)</code></pre>
 <thead>
 <tr class="header">
 <th align="left">probeID</th>
-<th align="left">N</th>
-<th align="left">Beta</th>
-<th align="left">SE</th>
-<th align="left">P</th>
+<th align="right">T_STAT</th>
+<th align="right">P</th>
 <th align="right">P_BH</th>
 </tr>
 </thead>
 <tbody>
 <tr class="odd">
-<td align="left">cg14817997</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="right">NA</td>
+<td align="left">cg16256574</td>
+<td align="right">37.73952</td>
+<td align="right">2.00e-08</td>
+<td align="right">0.01660825</td>
 </tr>
 <tr class="even">
-<td align="left">cg26928153</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="right">NA</td>
+<td align="left">cg13529355</td>
+<td align="right">36.82122</td>
+<td align="right">5.00e-08</td>
+<td align="right">0.01660825</td>
 </tr>
 <tr class="odd">
-<td align="left">cg16269199</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="right">NA</td>
+<td align="left">cg02586306</td>
+<td align="right">35.07179</td>
+<td align="right">6.00e-08</td>
+<td align="right">0.01660825</td>
 </tr>
 <tr class="even">
-<td align="left">cg13869341</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="right">NA</td>
+<td align="left">cg16029913</td>
+<td align="right">28.74487</td>
+<td align="right">1.40e-07</td>
+<td align="right">0.02264537</td>
 </tr>
 <tr class="odd">
-<td align="left">cg14008030</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="right">NA</td>
+<td align="left">cg13979492</td>
+<td align="right">36.92012</td>
+<td align="right">1.50e-07</td>
+<td align="right">0.02264537</td>
 </tr>
 <tr class="even">
-<td align="left">cg12045430</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="right">NA</td>
+<td align="left">cg16794634</td>
+<td align="right">26.54316</td>
+<td align="right">2.00e-07</td>
+<td align="right">0.02264537</td>
 </tr>
 <tr class="odd">
-<td align="left">cg20826792</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="right">NA</td>
+<td align="left">cg23068081</td>
+<td align="right">26.84196</td>
+<td align="right">2.10e-07</td>
+<td align="right">0.02264537</td>
 </tr>
 <tr class="even">
-<td align="left">cg20253340</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="right">NA</td>
+<td align="left">cg16697896</td>
+<td align="right">30.79678</td>
+<td align="right">2.10e-07</td>
+<td align="right">0.02264537</td>
 </tr>
 <tr class="odd">
-<td align="left">cg02404219</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="right">NA</td>
+<td align="left">cg17834252</td>
+<td align="right">36.70854</td>
+<td align="right">2.40e-07</td>
+<td align="right">0.02264537</td>
 </tr>
 <tr class="even">
-<td align="left">cg21870274</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="right">NA</td>
+<td align="left">cg14690837</td>
+<td align="right">33.36396</td>
+<td align="right">2.60e-07</td>
+<td align="right">0.02264537</td>
 </tr>
 <tr class="odd">
-<td align="left">cg03130891</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="right">NA</td>
+<td align="left">cg10738714</td>
+<td align="right">24.84429</td>
+<td align="right">2.90e-07</td>
+<td align="right">0.02284071</td>
 </tr>
 <tr class="even">
-<td align="left">cg04098293</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="right">NA</td>
+<td align="left">cg17310700</td>
+<td align="right">24.42036</td>
+<td align="right">3.20e-07</td>
+<td align="right">0.02284071</td>
 </tr>
 <tr class="odd">
-<td align="left">cg16382250</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="right">NA</td>
+<td align="left">cg11935708</td>
+<td align="right">25.46879</td>
+<td align="right">4.70e-07</td>
+<td align="right">0.02698542</td>
 </tr>
 <tr class="even">
-<td align="left">cg24335620</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="right">NA</td>
+<td align="left">cg12849787</td>
+<td align="right">22.78162</td>
+<td align="right">4.80e-07</td>
+<td align="right">0.02698542</td>
 </tr>
 <tr class="odd">
-<td align="left">cg22463138</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="right">NA</td>
+<td align="left">cg03948822</td>
+<td align="right">25.70595</td>
+<td align="right">4.80e-07</td>
+<td align="right">0.02698542</td>
 </tr>
 <tr class="even">
-<td align="left">cg16162899</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="right">NA</td>
+<td align="left">cg14193357</td>
+<td align="right">23.39686</td>
+<td align="right">5.20e-07</td>
+<td align="right">0.02698542</td>
 </tr>
 <tr class="odd">
-<td align="left">cg01803908</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="right">NA</td>
+<td align="left">cg14522254</td>
+<td align="right">22.52028</td>
+<td align="right">5.30e-07</td>
+<td align="right">0.02698542</td>
 </tr>
 <tr class="even">
-<td align="left">cg17149495</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="right">NA</td>
+<td align="left">cg14508198</td>
+<td align="right">21.98676</td>
+<td align="right">5.90e-07</td>
+<td align="right">0.02759453</td>
 </tr>
 <tr class="odd">
-<td align="left">cg22802167</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="right">NA</td>
+<td align="left">cg05129572</td>
+<td align="right">-21.92236</td>
+<td align="right">6.10e-07</td>
+<td align="right">0.02759453</td>
 </tr>
 <tr class="even">
-<td align="left">cg24669183</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="right">NA</td>
+<td align="left">cg12841923</td>
+<td align="right">22.08685</td>
+<td align="right">6.90e-07</td>
+<td align="right">0.02996968</td>
 </tr>
 <tr class="odd">
-<td align="left">cg17308840</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="right">NA</td>
+<td align="left">cg15041664</td>
+<td align="right">21.10141</td>
+<td align="right">7.80e-07</td>
+<td align="right">0.03121748</td>
 </tr>
 <tr class="even">
-<td align="left">cg17866181</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="right">NA</td>
+<td align="left">cg11848703</td>
+<td align="right">21.14909</td>
+<td align="right">8.10e-07</td>
+<td align="right">0.03121748</td>
 </tr>
 <tr class="odd">
-<td align="left">cg25018832</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="right">NA</td>
+<td align="left">cg09883043</td>
+<td align="right">23.87745</td>
+<td align="right">9.20e-07</td>
+<td align="right">0.03121748</td>
 </tr>
 <tr class="even">
-<td align="left">cg26679879</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="right">NA</td>
+<td align="left">cg16123305</td>
+<td align="right">20.63644</td>
+<td align="right">9.50e-07</td>
+<td align="right">0.03121748</td>
 </tr>
 <tr class="odd">
-<td align="left">cg22519184</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="right">NA</td>
+<td align="left">cg06656569</td>
+<td align="right">25.56605</td>
+<td align="right">9.50e-07</td>
+<td align="right">0.03121748</td>
 </tr>
 <tr class="even">
-<td align="left">cg11894324</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="right">NA</td>
+<td align="left">cg27360158</td>
+<td align="right">20.69169</td>
+<td align="right">9.80e-07</td>
+<td align="right">0.03121748</td>
 </tr>
 <tr class="odd">
-<td align="left">cg24159721</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="right">NA</td>
+<td align="left">cg10691846</td>
+<td align="right">20.14368</td>
+<td align="right">1.05e-06</td>
+<td align="right">0.03121748</td>
 </tr>
 <tr class="even">
-<td align="left">cg02288058</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="right">NA</td>
+<td align="left">cg21491609</td>
+<td align="right">20.91669</td>
+<td align="right">1.06e-06</td>
+<td align="right">0.03121748</td>
 </tr>
 <tr class="odd">
-<td align="left">cg15174812</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="right">NA</td>
+<td align="left">cg17881960</td>
+<td align="right">20.15950</td>
+<td align="right">1.08e-06</td>
+<td align="right">0.03121748</td>
 </tr>
 <tr class="even">
-<td align="left">cg12376350</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="right">NA</td>
+<td align="left">cg27176246</td>
+<td align="right">25.80504</td>
+<td align="right">1.09e-06</td>
+<td align="right">0.03121748</td>
 </tr>
 <tr class="odd">
-<td align="left">cg08477687</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="right">NA</td>
+<td align="left">cg26088888</td>
+<td align="right">25.93081</td>
+<td align="right">1.15e-06</td>
+<td align="right">0.03121748</td>
 </tr>
 <tr class="even">
-<td align="left">cg00034556</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="right">NA</td>
+<td align="left">cg03157179</td>
+<td align="right">20.02992</td>
+<td align="right">1.18e-06</td>
+<td align="right">0.03121748</td>
 </tr>
 <tr class="odd">
-<td align="left">cg00645010</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="right">NA</td>
+<td align="left">cg10397932</td>
+<td align="right">19.64469</td>
+<td align="right">1.22e-06</td>
+<td align="right">0.03121748</td>
 </tr>
 <tr class="even">
-<td align="left">cg15394630</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="right">NA</td>
+<td align="left">cg20387775</td>
+<td align="right">29.44485</td>
+<td align="right">1.25e-06</td>
+<td align="right">0.03121748</td>
 </tr>
 <tr class="odd">
-<td align="left">cg05001044</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="right">NA</td>
+<td align="left">cg09514550</td>
+<td align="right">19.24175</td>
+<td align="right">1.28e-06</td>
+<td align="right">0.03121748</td>
 </tr>
 <tr class="even">
-<td align="left">cg03344490</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="right">NA</td>
+<td align="left">cg01060989</td>
+<td align="right">19.35463</td>
+<td align="right">1.30e-06</td>
+<td align="right">0.03121748</td>
 </tr>
 <tr class="odd">
-<td align="left">cg17501828</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="right">NA</td>
+<td align="left">cg25401612</td>
+<td align="right">21.31526</td>
+<td align="right">1.41e-06</td>
+<td align="right">0.03182394</td>
 </tr>
 <tr class="even">
-<td align="left">cg11330075</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="right">NA</td>
+<td align="left">cg24489759</td>
+<td align="right">21.09834</td>
+<td align="right">1.48e-06</td>
+<td align="right">0.03182394</td>
 </tr>
 <tr class="odd">
-<td align="left">cg23917638</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="right">NA</td>
+<td align="left">cg06288712</td>
+<td align="right">21.99104</td>
+<td align="right">1.50e-06</td>
+<td align="right">0.03182394</td>
 </tr>
 <tr class="even">
-<td align="left">cg18024856</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="right">NA</td>
+<td align="left">cg15293854</td>
+<td align="right">18.61200</td>
+<td align="right">1.55e-06</td>
+<td align="right">0.03182394</td>
 </tr>
 <tr class="odd">
-<td align="left">cg18761878</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="right">NA</td>
+<td align="left">cg05756780</td>
+<td align="right">21.83013</td>
+<td align="right">1.60e-06</td>
+<td align="right">0.03182394</td>
 </tr>
 <tr class="even">
-<td align="left">cg27534567</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="right">NA</td>
+<td align="left">cg16594986</td>
+<td align="right">23.33652</td>
+<td align="right">1.77e-06</td>
+<td align="right">0.03182394</td>
 </tr>
 <tr class="odd">
-<td align="left">cg08858441</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="right">NA</td>
+<td align="left">cg09758894</td>
+<td align="right">20.08232</td>
+<td align="right">1.77e-06</td>
+<td align="right">0.03182394</td>
 </tr>
 <tr class="even">
-<td align="left">cg03348902</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="right">NA</td>
+<td align="left">cg07710309</td>
+<td align="right">18.66519</td>
+<td align="right">1.81e-06</td>
+<td align="right">0.03182394</td>
 </tr>
 <tr class="odd">
-<td align="left">cg01070250</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="right">NA</td>
+<td align="left">cg16783864</td>
+<td align="right">-18.90370</td>
+<td align="right">1.82e-06</td>
+<td align="right">0.03182394</td>
 </tr>
 <tr class="even">
-<td align="left">cg21996134</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="right">NA</td>
+<td align="left">cg07054804</td>
+<td align="right">18.09159</td>
+<td align="right">1.85e-06</td>
+<td align="right">0.03182394</td>
 </tr>
 <tr class="odd">
-<td align="left">cg07264491</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="right">NA</td>
+<td align="left">cg10039523</td>
+<td align="right">18.11188</td>
+<td align="right">1.86e-06</td>
+<td align="right">0.03182394</td>
 </tr>
 <tr class="even">
-<td align="left">cg01577251</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="right">NA</td>
+<td align="left">cg00455960</td>
+<td align="right">19.27523</td>
+<td align="right">1.86e-06</td>
+<td align="right">0.03182394</td>
 </tr>
 <tr class="odd">
-<td align="left">cg13128577</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="right">NA</td>
+<td align="left">cg10459174</td>
+<td align="right">-18.47317</td>
+<td align="right">1.94e-06</td>
+<td align="right">0.03182394</td>
 </tr>
 <tr class="even">
-<td align="left">cg15560884</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="left">NA</td>
-<td align="right">NA</td>
+<td align="left">cg05080976</td>
+<td align="right">19.66619</td>
+<td align="right">2.07e-06</td>
+<td align="right">0.03182394</td>
 </tr>
 </tbody>
 </table>

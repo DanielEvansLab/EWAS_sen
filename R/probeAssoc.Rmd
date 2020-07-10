@@ -58,20 +58,18 @@ dimnames(betaMat)[[1]] <- ewas$probeID
 
 lm_fun <- function(cg){
   out <- tryCatch({
-    lm1 <- glm(ATV ~ cg, data = samp, family = "binomial", na.action = na.omit)
-    n1 <- length(resid(lm1))
-    b <- summary(lm1)$coefficients[2,1]
-    se <- summary(lm1)$coefficients[2,2]
-    p <- summary(lm1)$coefficients[2,4]
-    return(c(n1, b, se, p))
+    lm1 <- t.test(cg ~ ATV, data = samp, na.action = na.omit)
+    tstat <- lm1$statistic
+    p <- lm1$p.value
+    return(c(tstat, p))
   },
-  error = function(e) rep(NA, 4)
+  error = function(e) rep(NA, 2)
   )
 }
 
 results <- apply(betaMat, 1, lm_fun)
 results <- t(results)
-colnames(results) <- c("N", "Beta", "SE", "P")
+colnames(results) <- c("T_STAT", "P")
 resultsTB <- as_tibble(results)
 resultsTB <- resultsTB %>%
 	mutate(probeID = rownames(results)) %>%
