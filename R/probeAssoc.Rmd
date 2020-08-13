@@ -87,3 +87,14 @@ resultsTB_top <- resultsTB %>%
 kable(resultsTB_top, digits = 8)
 ```
 
+Filter results
+
+```{r}
+res <- read_csv("../results/probewise_ATV.csv")
+res %>%
+	filter(P_BH <= 0.05) %>%
+	count()
+
+
+
+```
