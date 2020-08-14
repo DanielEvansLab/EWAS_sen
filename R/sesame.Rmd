@@ -1,0 +1,294 @@
+---
+title: "EWAS pilot in MrOS"
+author: "Dan Evans"
+date: "Last update: `r format(Sys.time(), '%d %B, %Y')`"
+output: html_document
+---
+
+# EWAS terms
+
+More drugs to examine. Anti-NGF and might be associated with OA. Anti-sclerostin and heart disease. 
+
+DNA methylation quantity is expressed as $\beta$ 
+
+$$ \beta = M/(M + U)  $$
+
+Where M = hybridization signal from a methylated version of a cytosine nucleotide and 
+U =  hybridization signal from an unmethylated version of a cytosine nucleotide. 
+
+A detection probability represents the probability of a detected signal being background flourescence. If the probability is high, the signal is more likely to be background, and the value should be set to missing.
+
+Standard workflows suggest to remove data points with detection P-value > 0.05.  
+
+# Processing Illumina EPIC array with Sesame package
+
+- EWAS array Illumina EPIC 850 + custom content
+
+- LifeEGX worked with Sesame developer to process chips. LifeEGX recommends Sesame
+
+- Sesame is a [bioconductor package](https://www.bioconductor.org/packages/release/bioc/html/sesame.html)
+  + Improvements on previous EWAS packages for low-level processing. 
+  + Existing methods do not identify artifacts associated with detection failure. Sources of failure include: insufficient DNA due to germline or somatic deletions or hyperpolymorphism, probe cross-hybridization. 
+  + P-value with out-of-band array hybridization: pOOBAH
+  + Reduces technical artifacts
+
+```{r, setup}
+knitr::opts_chunk$set(cache.lazy = FALSE)
+```
+
+# Sesame installation on UCR cluster
+
+Installation of sesame and dependencies went fine, no errors or warnings.
+
+```{r, eval = FALSE}
+if (!requireNamespace("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
+
+BiocManager::install("sesame", lib = "~/Rlibs")
+```
+Upgrade installed sesame version from 1.2 to 1.4
+
+Can check version of loaded packages with sessionInfo()
+
+```{r, eval = FALSE}
+BiocManager::install("sesame", lib = "~/Rlibs")
+BiocManager::install("sesameData", lib = "~/Rlibs")
+```
+
+# Load libraries
+```{r}
+library(data.table)
+library(xtable)
+library(tidyverse)
+library(sesame)
+```
+
+# Filter and normalize data
+
+This process takes a long time, so run it once and save the output.
+
+```{r, eval = FALSE}
+
+# manifest <- read.csv("../data/raw/Evans_Project_002/CombinedManifestEPICplus.manifest.LifeEGX.csv", header = T, stringsAsFactors = F, na.strings = c("NA", ""))
+
+manifest <- readRDS("../data/raw/Evans_Project_002/OpenDMAP_sesame_manifest.rds")
+
+IDATprefixes <- searchIDATprefixes(dir.name = "../data/raw/Evans_Project_002/idat_Files")
+
+#specifying custom manifest works using rds manifest, not the csv manifest
+betas <- openSesame(IDATprefixes, 'custom', manifest = manifest)
+#Warnings issued. The sesame vignette also displayed these warnings, so I'm not concerned. 
+#50: In regularize.values(x, y, ties, missing(ties)) :collapsing to unique 'x' values  
+
+#openSesame takes a while, so I'll write-out betas as a file.
+betasDT <- as.data.table(betas)
+betasDT[,probeID := row.names(betas)]
+setcolorder(betasDT,c("probeID", names(betasDT)[1:ncol(betasDT)-1]))
+fwrite(betasDT, file = "../data/clean/betas.csv", na = "NA")
+
+
+```
+
+# Load matrix of betas
+
+Add MrOS subject IDs.
+
+Fix probe IDs to allow matching with various downstream utilities.
+
+```{r, cache = TRUE}
+betas <- fread("../data/clean/betas.csv")
+samp <- fread("../data/raw/Evans_Project_002/Evans_Project_002_Sample_Sheet.csv", skip = 8)
+samp[, sample_ID := paste(Sentrix_ID, Sentrix_Position, sep = "_")]
+#sample IDs in sample sheet in the same order as sample names in betas file
+sum(names(betas)[-1] != samp$sample_ID)
+sum(names(betas)[-1] == samp$sample_ID)
+setnames(betas, c("probeID", samp$Sample_Name))
+betaMat <- as.matrix(betas[,!"probeID"])
+
+#remove trailing info from probe IDs
+probes <- base::strsplit(betas$probeID, split = "_", fixed = TRUE)
+probes <- vapply(probes, function(x) x[1], FUN.VALUE = character(1))
+dimnames(betaMat)[[1]] <- probes
+#betaMat <- t(betaMat)
+
+```
+
+# Create files for Horvath website
+```{r}
+library(data.table)
+pheno <- fread("../data/pheno/INFLAME.CSV")
+pheno <- pheno[,.(ID, V3AGE1)]
+setnames(pheno, "V3AGE1", "Age")
+#sample annotation in same order as samples in betaMat
+samp <- fread("../data/raw/Evans_Project_002/Evans_Project_002_Sample_Sheet.csv", skip = 8)
+samp[, index := seq_along(Sample_Name)]
+sum(colnames(betaMat)!= samp$Sample_Name)
+sum(colnames(betaMat)== samp$Sample_Name)
+samp <- merge(samp, pheno, by.x = "Sample_Name", by.y = "ID", all.x = TRUE)
+samp[, Tissue := "Blood WB"]
+samp[, Female := 0L]
+samp <- samp[order(index)]
+setnames(samp, "Sample_Name", "ID")
+samp <- samp[,.(ID, Age, Female, Tissue)]
+samp[is.na(Age), Age := as.integer(mean(samp$Age, na.rm = TRUE))]
+fwrite(samp, file = "../data/horvath/input/sampleAnnotation.csv", eol = "\r\n", na= "NA")
+
+horvathProbe <- read.csv("../data/horvath/input/datMiniAnnotation3.csv", header=T, stringsAsFactors = F)#28587 probes
+sum(!horvathProbe$Name %in% rownames(betaMat)) #Darn, 2415 probes not in my data
+
+betasDF <- as.data.frame(betaMat)
+betasDF$ProbeID <- row.names(betaMat)
+betasDF <- betasDF[,c(ncol(betasDF), 1:ncol(betasDF)-1)]
+match1 <- match(horvathProbe[,1], betasDF[,1])
+betasDFreduced <- betasDF[match1,]
+betasDFreduced[is.na(match1), 1] <- as.character(horvathProbe[is.na(match1), 1])
+
+temp <- sapply(betasDFreduced, function(x) is.numeric(x))
+sum(temp)
+temp <- sapply(betasDFreduced, function(x) !is.numeric(x))
+sum(temp)
+
+write.csv(betasDFreduced, "../data/horvath/input/MethylData.csv", row.names = F, quote = F, eol = "\r\n")
+
+```
+
+
+# Missing analysis 
+
+By sample and probe
+```{r}
+miss_sample <- apply(betaMat, 2, function(x) sum(is.na(x))/length(x) )
+miss_probe <- apply(betaMat, 1, function(x) sum(is.na(x))/length(x) )
+length(miss_sample)
+length(miss_probe)
+sum(is.na(miss_sample))
+sum(is.na(miss_probe))
+sum(miss_sample >= 0.95) #0 samples have missing rate greater than 
+#no samples that are essentially blanks.
+sum(miss_probe >= 1) #3229 completely missing probes. 
+sum(miss_probe >= 0.95) #6608 Remove these, then determine number of samples with missing rate>0.05.
+blank_probes <- names(miss_probe[miss_probe >= 0.95])
+#remove probes with >=0.95 missingness
+betaMat <- betaMat[!rownames(betaMat) %in% blank_probes, ]
+
+# Now I can remove probes with missing rate > 5% and samples > 10%
+miss_sample <- apply(betaMat, 2, function(x) sum(is.na(x))/length(x) )
+miss_probe <- apply(betaMat, 1, function(x) sum(is.na(x))/length(x) )
+sum(miss_probe > 0.05) #73843 probes with missing rate greater than 5%
+sum(miss_probe > 0.05)/length(miss_probe) #8% probes removed 
+sum(miss_sample > 0.10) # 7 samples with > 10% missing 
+miss_sample[miss_sample > 0.1]
+sum(miss_sample > 0.10)/length(miss_sample) #4% samples removed
+
+#remove samples with missing >10% and probes with missing > 5%
+blank_probes <- names(miss_probe[miss_probe > 0.05])
+betaMat <- betaMat[!rownames(betaMat) %in% blank_probes, ]
+blank_samples <- names(miss_sample[miss_sample > 0.10])
+betaMat <- betaMat[, !colnames(betaMat) %in% blank_samples ]
+dim(betaMat) #788242 probes, 153 samples
+
+betasDT <- as.data.table(betaMat)
+betasDT[,ProbeID := row.names(betaMat)]
+setcolorder(betasDT,c("ProbeID", names(betasDT)[1:ncol(betasDT)-1]))
+fwrite(betasDT, file = "../data/clean/betas_miss.csv", na = "NA")
+betaMatT <- t(betaMat)
+betasDT <- as.data.table(betaMatT)
+betasDT[,ID := row.names(betaMatT)]
+setcolorder(betasDT,c(ncol(betasDT), 1:(ncol(betasDT)-1)))
+fwrite(betasDT, file = "../data/clean/betas_miss_tr.csv", na = "NA")
+```
+
+
+# Use beta matrix to predict cell composition
+
+```{r}
+g <- getRefSet(platform = "EPIC")
+probeCell <- row.names(g) #275955 probes
+#test on first column, first sample of data
+q <- betaMat[,1]
+probes2 <- base::intersect(names(q), probeCell)
+q <- q[names(q) %in% probes2]
+q <- q[!duplicated(names(q))]
+g <- g[probeCell %in% probes2,]
+
+cells <- sesame:::estimateCellComposition(g, q, refine = FALSE)
+cells[["frac"]]
+
+
+```
+
+# Probe hg19 annotation
+
+```{r}
+EPIC.hg19.manifest <- sesameDataGet("EPIC.hg19.manifest")
+str(EPIC.hg19.manifest)
+
+```
+
+# Use beta matrix to predict biological age
+
+```{r}
+
+(ageH353 <- apply(betaMat, 1, predictAgeHorvath353))
+
+```
+
+# Read IDATs into SigSet list
+```{r, cache = TRUE, results = "asis"}
+
+IDATprefixes <- searchIDATprefixes(dir.name = "../data/raw/Evans_Project_002/idat_Files")
+#IDATprefixes <- IDATprefixes[2:3]
+ssets <- lapply(IDATprefixes, readIDATpair)
+chipSex <- sapply(ssets, inferSex)
+chipEth <- sapply(ssets, inferEthnicity)
+
+qc10 <- do.call(rbind, lapply(ssets, function(x)
+    as.data.frame(sesameQC(x))))
+qc10$sample_name <- names(ssets)
+
+qctab <- qc10[,c('mean_beta_cg','frac_meth_cg','frac_unmeth_cg','sex','age')]
+tab <- xtable(qctab)
+print(tab, type = "html")
+```
+
+
+# Mean intensity
+
+The mean {M,U} intensity can be reached by mean_intensity. Similarly, the mean M+U intensity can be reached by mean_intensity_total. Low intensities are symptomatic of low input or poor hybridization.
+
+```{r, results = "asis"}
+
+library(wheatmap)
+p1 <- ggplot(qc10) +
+    geom_bar(aes(sample_name, mean_intensity), stat='identity') +
+    xlab('Sample Name') + ylab('Mean Intensity') +
+    ylim(0,18000) +
+    theme(axis.text.x = element_text(angle=90, vjust=0.5, hjust=1))
+p2 <- ggplot(qc10) +
+    geom_bar(aes(sample_name, mean_intensity_total), stat='identity') +
+    xlab('Sample Name') + ylab('Mean M+U Intensity') +
+    ylim(0,18000) +
+    theme(axis.text.x = element_text(angle=90, vjust=0.5, hjust=1))
+WGG(p1) + WGG(p2, RightOf())
+
+```
+
+# Fraction of NA
+
+The fraction of NAs are signs of masking due to variety of reasons including failed detection, high background, putative low quality probes etc. 
+
+```{r, results = "asis"}
+p1 <- ggplot(qc10) +
+    geom_bar(aes(sample_name, num_na_cg), stat='identity') +
+    xlab('Sample Name') + ylab('Number of NAs') +
+    theme(axis.text.x = element_text(angle=90, vjust=0.5, hjust=1))
+p2 <- ggplot(qc10) +
+    geom_bar(aes(sample_name, frac_na_cg), stat='identity') +
+    xlab('Sample Name') + ylab('Fraction of NAs (%)') +
+    theme(axis.text.x = element_text(angle=90, vjust=0.5, hjust=1))
+WGG(p1) + WGG(p2, RightOf())
+
+
+```
+
+
