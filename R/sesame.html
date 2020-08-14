@@ -399,7 +399,9 @@ summary {
 <ul>
 <li>Improvements on previous EWAS packages for low-level processing.</li>
 <li>Existing methods do not identify artifacts associated with detection failure. Sources of failure include: insufficient DNA due to germline or somatic deletions or hyperpolymorphism, probe cross-hybridization.</li>
-<li>Probes are masked (set to NA) with two methods: P-value with out-of-band array hybridization (pOOBAH) so that probes with detection p-value &gt; 0.05 are masked. Probes with design issues such as overlapping SNPs are masked.</li>
+<li>Probes are masked (set to NA) with two methods: P-value with out-of-band array hybridization (pOOBAH) so that probes with detection p-value &gt; 0.05 are masked. Probes with design issues such as overlapping SNPs are masked. Minfi uses negative control probes for background, but there are only 411 of them on the EPIC array. Sesame pOOBAH uses out-of-band (OOB) signals from type I probes in addition to negative control probes to improve background subtraction and detection calling. Minfi adopted pOOBAH, but false positive rate higher than Sesame’s implementation (Fig 2 Zhou 2018, NAR).<br />
+</li>
+<li>Non-linear dye bias correction. Minfi uses linear scaling. Sesame uses nonlinear scaling to better fit dye bias.</li>
 </ul></li>
 </ul>
 <pre class="r"><code>knitr::opts_chunk$set(cache.lazy = FALSE)</code></pre>
@@ -475,6 +477,7 @@ library(multtest)</code></pre>
 <h1>Mask and normalize data</h1>
 <p>Sesame pipeline involves probe masking with pOOBAH, normalization with noob, and nonlinear dye bias correction.</p>
 <p>Noob = background subtraction based on normal-exponential deconvolution using out-of-band probes.</p>
+<p>You can think of this pipeline as adding pOOBAH to noob. Then also the non-linear dye bias correction should be better than minfi’s linear correction.</p>
 <p>This process takes a long time, so run it once and save the output.</p>
 <pre class="r"><code>IDATprefixes &lt;- searchIDATprefixes(dir.name = &quot;../data/raw/idatFiles/&quot;)
 betas &lt;- openSesame(IDATprefixes)</code></pre>
@@ -1722,6 +1725,58 @@ resultsTB %&gt;%
 <tbody>
 </tbody>
 </table>
+<pre class="r"><code>resultsTB %&gt;%
+    arrange(P) %&gt;%
+    head() %&gt;%
+    kable(digits = 8)</code></pre>
+<table>
+<thead>
+<tr class="header">
+<th align="left">probeID</th>
+<th align="right">T_STAT</th>
+<th align="right">P</th>
+<th align="right">P_BH</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="left">cg21817833</td>
+<td align="right">21.45989</td>
+<td align="right">6.800e-07</td>
+<td align="right">0.4482795</td>
+</tr>
+<tr class="even">
+<td align="left">cg25404854</td>
+<td align="right">-21.27904</td>
+<td align="right">1.210e-06</td>
+<td align="right">0.4482795</td>
+</tr>
+<tr class="odd">
+<td align="left">cg26935020</td>
+<td align="right">16.75160</td>
+<td align="right">1.027e-05</td>
+<td align="right">0.8003345</td>
+</tr>
+<tr class="even">
+<td align="left">cg25597067</td>
+<td align="right">17.10527</td>
+<td align="right">1.066e-05</td>
+<td align="right">0.8003345</td>
+</tr>
+<tr class="odd">
+<td align="left">cg24924502</td>
+<td align="right">-15.08775</td>
+<td align="right">1.072e-05</td>
+<td align="right">0.8003345</td>
+</tr>
+<tr class="even">
+<td align="left">cg08558153</td>
+<td align="right">-13.08508</td>
+<td align="right">1.364e-05</td>
+<td align="right">0.8003345</td>
+</tr>
+</tbody>
+</table>
 </div>
 <div id="probe-hg19-annotation" class="section level1">
 <h1>Probe hg19 annotation</h1>
@@ -1749,21 +1804,20 @@ str(EPIC.hg19.manifest)</code></pre>
 ## [11] knitr_1.29           forcats_0.5.0        stringr_1.4.0        dplyr_1.0.0          purrr_0.3.4          readr_1.3.1          tidyr_1.1.0          tibble_3.0.1         ggplot2_3.3.2        tidyverse_1.3.0     
 ## 
 ## loaded via a namespace (and not attached):
-##   [1] colorspace_1.4-1              ellipsis_0.3.1                DNAcopy_1.62.0                XVector_0.28.0                GenomicRanges_1.40.0          fs_1.4.2                      base64_2.0                   
-##   [8] rstudioapi_0.11               farver_2.0.3                  bit64_0.9-7                   interactiveDisplayBase_1.26.3 AnnotationDbi_1.50.1          fansi_0.4.1                   lubridate_1.7.9              
-##  [15] xml2_1.3.2                    codetools_0.2-16              splines_4.0.1                 jsonlite_1.7.0                broom_0.5.6                   shiny_1.5.0                   HDF5Array_1.16.1             
-##  [22] BiocManager_1.30.10           compiler_4.0.1                httr_1.4.1                    backports_1.1.8               assertthat_0.2.1              Matrix_1.2-18                 fastmap_1.0.1                
-##  [29] cli_2.0.2                     later_1.1.0.1                 htmltools_0.5.0               tools_4.0.1                   gtable_0.3.0                  glue_1.4.1                    GenomeInfoDbData_1.2.3       
-##  [36] rappdirs_0.3.1                Rcpp_1.0.4.6                  cellranger_1.1.0              vctrs_0.3.1                   preprocessCore_1.50.0         nlme_3.1-148                  xfun_0.15                    
-##  [43] rvest_0.3.5                   mime_0.9                      lifecycle_0.2.0               zlibbioc_1.34.0               MASS_7.3-51.6                 scales_1.1.1                  hms_0.5.3                    
-##  [50] promises_1.1.1                SummarizedExperiment_1.18.1   rhdf5_2.32.1                  RColorBrewer_1.1-2            yaml_2.2.1                    curl_4.3                      memoise_1.1.0                
-##  [57] stringi_1.4.6                 RSQLite_2.2.0                 highr_0.8                     BiocVersion_3.11.1            S4Vectors_0.26.1              randomForest_4.6-14           BiocParallel_1.22.0          
-##  [64] GenomeInfoDb_1.24.2           rlang_0.4.6                   pkgconfig_2.0.3               matrixStats_0.56.0            bitops_1.0-6                  evaluate_0.14                 lattice_0.20-41              
-##  [71] Rhdf5lib_1.10.0               labeling_0.3                  bit_1.1-15.2                  tidyselect_1.1.0              magrittr_1.5                  R6_2.4.1                      IRanges_2.22.2               
-##  [78] generics_0.0.2                DelayedArray_0.14.0           DBI_1.1.0                     pillar_1.4.4                  haven_2.3.1                   withr_2.2.0                   survival_3.2-3               
-##  [85] RCurl_1.98-1.2                modelr_0.1.8                  crayon_1.3.4                  utf8_1.1.4                    rmarkdown_2.3                 grid_4.0.1                    readxl_1.3.1                 
-##  [92] blob_1.2.1                    reprex_0.3.0                  digest_0.6.25                 xtable_1.8-4                  httpuv_1.5.4                  illuminaio_0.30.0             openssl_1.4.2                
-##  [99] stats4_4.0.1                  munsell_0.5.0                 askpass_1.1</code></pre>
+##  [1] colorspace_1.4-1              ellipsis_0.3.1                DNAcopy_1.62.0                XVector_0.28.0                GenomicRanges_1.40.0          fs_1.4.2                      rstudioapi_0.11              
+##  [8] farver_2.0.3                  bit64_0.9-7                   interactiveDisplayBase_1.26.3 AnnotationDbi_1.50.1          fansi_0.4.1                   lubridate_1.7.9               xml2_1.3.2                   
+## [15] codetools_0.2-16              splines_4.0.1                 jsonlite_1.7.0                broom_0.5.6                   shiny_1.5.0                   HDF5Array_1.16.1              BiocManager_1.30.10          
+## [22] compiler_4.0.1                httr_1.4.1                    backports_1.1.8               assertthat_0.2.1              Matrix_1.2-18                 fastmap_1.0.1                 cli_2.0.2                    
+## [29] later_1.1.0.1                 htmltools_0.5.0               tools_4.0.1                   gtable_0.3.0                  glue_1.4.1                    GenomeInfoDbData_1.2.3        rappdirs_0.3.1               
+## [36] Rcpp_1.0.4.6                  cellranger_1.1.0              vctrs_0.3.1                   preprocessCore_1.50.0         nlme_3.1-148                  xfun_0.15                     rvest_0.3.5                  
+## [43] mime_0.9                      lifecycle_0.2.0               zlibbioc_1.34.0               MASS_7.3-51.6                 scales_1.1.1                  hms_0.5.3                     promises_1.1.1               
+## [50] SummarizedExperiment_1.18.1   rhdf5_2.32.1                  RColorBrewer_1.1-2            yaml_2.2.1                    curl_4.3                      memoise_1.1.0                 stringi_1.4.6                
+## [57] RSQLite_2.2.0                 highr_0.8                     BiocVersion_3.11.1            S4Vectors_0.26.1              randomForest_4.6-14           BiocParallel_1.22.0           GenomeInfoDb_1.24.2          
+## [64] rlang_0.4.6                   pkgconfig_2.0.3               matrixStats_0.56.0            bitops_1.0-6                  evaluate_0.14                 lattice_0.20-41               Rhdf5lib_1.10.0              
+## [71] labeling_0.3                  bit_1.1-15.2                  tidyselect_1.1.0              magrittr_1.5                  R6_2.4.1                      IRanges_2.22.2                generics_0.0.2               
+## [78] DelayedArray_0.14.0           DBI_1.1.0                     pillar_1.4.4                  haven_2.3.1                   withr_2.2.0                   survival_3.2-3                RCurl_1.98-1.2               
+## [85] modelr_0.1.8                  crayon_1.3.4                  utf8_1.1.4                    rmarkdown_2.3                 grid_4.0.1                    readxl_1.3.1                  blob_1.2.1                   
+## [92] reprex_0.3.0                  digest_0.6.25                 xtable_1.8-4                  httpuv_1.5.4                  stats4_4.0.1                  munsell_0.5.0</code></pre>
 </div>
 
 
