@@ -1,5 +1,5 @@
 ---
-title: "EWAS pilot in MrOS"
+title: "EWAS senescence"
 author: "Dan Evans"
 date: "Last update: `r format(Sys.time(), '%d %B, %Y')`"
 output: html_document
