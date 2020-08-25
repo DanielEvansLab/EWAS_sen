@@ -221,7 +221,16 @@ samp <- sampsheet %>%
 	mutate(ATV = ifelse(str_detect(SampleLabel, "\\+ ATV"), 1L, 0L))
 samp$ATV[str_detect(samp$SampleLabel, ".*ATV.*", negate = TRUE)] <- NA
 cbind(samp$ATV, samp$SampleLabel)
+cbind(samp$SampleLabel, samp$Description)
 
+#MiDAS contrast
+
+cbind(samp$SampleLabel, samp$Description, str_detect(samp$SampleLabel, "mtD -P [1-9]"))
+cbind(samp$SampleLabel, samp$Description, str_detect(samp$SampleLabel, "C -P [1-9]"))
+
+samp <- sampsheet %>%
+	mutate(ATV = ifelse(str_detect(SampleLabel, "mtD -P [1-9]"), 1L, 0L))
+samp$ATV[str_detect(samp$SampleLabel, ".*ATV.*", negate = TRUE)] <- NA
 ```
 
 # Probe-wise analysis of senescence treatment
