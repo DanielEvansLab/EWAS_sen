@@ -58,6 +58,8 @@ library(knitr)
 library(sesame)
 library(wheatmap)
 library(multtest)
+library(Biobase)
+library(limma)
 ```
 
 # Mask and normalize data
