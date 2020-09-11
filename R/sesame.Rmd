@@ -12,7 +12,9 @@ DNA methylation quantity is expressed as $\beta$
 $$ \beta = M/(M + U)  $$
 
 Where M = hybridization signal from a methylated version of a cytosine nucleotide and 
-U =  hybridization signal from an unmethylated version of a cytosine nucleotide. 
+U =  hybridization signal from an unmethylated version of a cytosine nucleotide. Beta can be interpreted as the proportion of methylation signal for a probe, and values range from 0 to 1. Beta is easy to interpret for humans, but typically has a bimodal distribution that is suboptimal for statistical modeling. Thus, we analyze M-values, which are another way to express methylation values for probes. 
+
+$$ M-value = log_2(M/U) $$
 
 EPIC array has type 1 and type 2 probes. Type 1 probes are from the old 27K array that uses 2 bead types per CpG. The type I probes are labeled I-green and I-red. The newer type 2 probes uses one bead type. Most of the EPIC array probes are type II.  
 

@@ -377,7 +377,7 @@ summary {
 
 <h1 class="title toc-ignore">EWAS senescence</h1>
 <h4 class="author">Dan Evans</h4>
-<h4 class="date">Last update: 10 September, 2020</h4>
+<h4 class="date">Last update: 11 September, 2020</h4>
 
 </div>
 
@@ -386,7 +386,8 @@ summary {
 <h1>EWAS terms</h1>
 <p>DNA methylation quantity is expressed as <span class="math inline">\(\beta\)</span></p>
 <p><span class="math display">\[ \beta = M/(M + U)  \]</span></p>
-<p>Where M = hybridization signal from a methylated version of a cytosine nucleotide and U = hybridization signal from an unmethylated version of a cytosine nucleotide.</p>
+<p>Where M = hybridization signal from a methylated version of a cytosine nucleotide and U = hybridization signal from an unmethylated version of a cytosine nucleotide. Beta can be interpreted as the proportion of methylation signal for a probe, and values range from 0 to 1. Beta is easy to interpret for humans, but typically has a bimodal distribution that is suboptimal for statistical modeling. Thus, we analyze M-values, which are another way to express methylation values for probes.</p>
+<p><span class="math display">\[ M-value = log_2(M/U) \]</span></p>
 <p>EPIC array has type 1 and type 2 probes. Type 1 probes are from the old 27K array that uses 2 bead types per CpG. The type I probes are labeled I-green and I-red. The newer type 2 probes uses one bead type. Most of the EPIC array probes are type II.</p>
 <p>A detection probability represents the probability of a detected signal being background flourescence. If the probability is high, the signal is more likely to be background, and the value should be set to missing.</p>
 <p>Standard workflows suggest to remove data points with detection P-value &gt; 0.05.</p>
@@ -2487,19 +2488,18 @@ write_csv(resultAll, path = paste0(dir_out, &quot;SenMidasvNoSenNoMtPy.csv&quot;
 ## 
 ## loaded via a namespace (and not attached):
 ##  [1] colorspace_1.4-1              ellipsis_0.3.1                DNAcopy_1.62.0                XVector_0.28.0                GenomicRanges_1.40.0          fs_1.4.2                      rstudioapi_0.11              
-##  [8] bit64_0.9-7                   interactiveDisplayBase_1.26.3 AnnotationDbi_1.50.1          fansi_0.4.1                   lubridate_1.7.9               xml2_1.3.2                    codetools_0.2-16             
-## [15] splines_4.0.1                 jsonlite_1.7.0                broom_0.5.6                   shiny_1.5.0                   HDF5Array_1.16.1              BiocManager_1.30.10           compiler_4.0.1               
-## [22] httr_1.4.1                    backports_1.1.8               assertthat_0.2.1              Matrix_1.2-18                 fastmap_1.0.1                 cli_2.0.2                     later_1.1.0.1                
-## [29] htmltools_0.5.0               tools_4.0.1                   gtable_0.3.0                  glue_1.4.1                    GenomeInfoDbData_1.2.3        rappdirs_0.3.1                Rcpp_1.0.4.6                 
-## [36] cellranger_1.1.0              vctrs_0.3.1                   preprocessCore_1.50.0         nlme_3.1-148                  xfun_0.15                     rvest_0.3.5                   mime_0.9                     
-## [43] lifecycle_0.2.0               zlibbioc_1.34.0               MASS_7.3-51.6                 scales_1.1.1                  hms_0.5.3                     promises_1.1.1                SummarizedExperiment_1.18.1  
-## [50] rhdf5_2.32.1                  yaml_2.2.1                    curl_4.3                      memoise_1.1.0                 stringi_1.4.6                 RSQLite_2.2.0                 highr_0.8                    
-## [57] BiocVersion_3.11.1            S4Vectors_0.26.1              randomForest_4.6-14           BiocParallel_1.22.0           GenomeInfoDb_1.24.2           rlang_0.4.6                   pkgconfig_2.0.3              
-## [64] matrixStats_0.56.0            bitops_1.0-6                  evaluate_0.14                 lattice_0.20-41               Rhdf5lib_1.10.0               bit_1.1-15.2                  tidyselect_1.1.0             
-## [71] magrittr_1.5                  R6_2.4.1                      IRanges_2.22.2                generics_0.0.2                DelayedArray_0.14.0           DBI_1.1.0                     pillar_1.4.4                 
-## [78] haven_2.3.1                   withr_2.2.0                   survival_3.2-3                RCurl_1.98-1.2                modelr_0.1.8                  crayon_1.3.4                  rmarkdown_2.3                
-## [85] grid_4.0.1                    readxl_1.3.1                  blob_1.2.1                    reprex_0.3.0                  digest_0.6.25                 xtable_1.8-4                  httpuv_1.5.4                 
-## [92] stats4_4.0.1                  munsell_0.5.0</code></pre>
+##  [8] bit64_0.9-7                   interactiveDisplayBase_1.26.3 AnnotationDbi_1.50.1          fansi_0.4.1                   lubridate_1.7.9               xml2_1.3.2                    splines_4.0.1                
+## [15] jsonlite_1.7.0                broom_0.5.6                   shiny_1.5.0                   HDF5Array_1.16.1              BiocManager_1.30.10           compiler_4.0.1                httr_1.4.1                   
+## [22] backports_1.1.8               assertthat_0.2.1              Matrix_1.2-18                 fastmap_1.0.1                 cli_2.0.2                     later_1.1.0.1                 htmltools_0.5.0              
+## [29] tools_4.0.1                   gtable_0.3.0                  glue_1.4.1                    GenomeInfoDbData_1.2.3        rappdirs_0.3.1                Rcpp_1.0.4.6                  cellranger_1.1.0             
+## [36] vctrs_0.3.1                   preprocessCore_1.50.0         nlme_3.1-148                  xfun_0.15                     rvest_0.3.5                   mime_0.9                      lifecycle_0.2.0              
+## [43] zlibbioc_1.34.0               MASS_7.3-51.6                 scales_1.1.1                  hms_0.5.3                     promises_1.1.1                SummarizedExperiment_1.18.1   rhdf5_2.32.1                 
+## [50] yaml_2.2.1                    curl_4.3                      memoise_1.1.0                 stringi_1.4.6                 RSQLite_2.2.0                 BiocVersion_3.11.1            S4Vectors_0.26.1             
+## [57] randomForest_4.6-14           BiocParallel_1.22.0           GenomeInfoDb_1.24.2           rlang_0.4.6                   pkgconfig_2.0.3               matrixStats_0.56.0            bitops_1.0-6                 
+## [64] evaluate_0.14                 lattice_0.20-41               Rhdf5lib_1.10.0               bit_1.1-15.2                  tidyselect_1.1.0              magrittr_1.5                  R6_2.4.1                     
+## [71] IRanges_2.22.2                generics_0.0.2                DelayedArray_0.14.0           DBI_1.1.0                     pillar_1.4.4                  haven_2.3.1                   withr_2.2.0                  
+## [78] survival_3.2-3                RCurl_1.98-1.2                modelr_0.1.8                  crayon_1.3.4                  rmarkdown_2.3                 grid_4.0.1                    readxl_1.3.1                 
+## [85] blob_1.2.1                    reprex_0.3.0                  digest_0.6.25                 xtable_1.8-4                  httpuv_1.5.4                  stats4_4.0.1                  munsell_0.5.0</code></pre>
 </div>
 
 
