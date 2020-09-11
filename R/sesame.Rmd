@@ -363,7 +363,7 @@ Array annotation downloaded [here](http://zwdzwd.github.io/InfiniumAnnotation#cu
 
 ```{r message = FALSE, cache = TRUE}
 
-fdat <- fData(eset_Mvals_clean)
+fdat <- fData(eset_Mvals)
 #dat <- read_csv(paste0(dir_out, "ATVvControl.csv"))
 datOld <- read_csv(paste0(dir_out, "probewise_ATV.csv"))
 
