@@ -64,6 +64,15 @@ library(limma)
 library(RColorBrewer)
 ```
 
+Set global variables.
+
+```{r}
+
+dir_out <- "../results/"
+
+
+```
+
 # Mask and normalize data and create eset
 
 Sesame pipeline involves probe masking with pOOBAH, normalization with noob, and nonlinear dye bias correction.
@@ -307,7 +316,6 @@ From the limma user guide: Suppose for example that B = 1.5. The odds of differe
 
 
 ```{r, cache = TRUE}
-dir_out <- "../results/"
 
 design <- model.matrix(~0 + treatment, data = pData(eset_Mvals_clean))
 design
@@ -349,7 +357,22 @@ write_csv(resultAll, path = paste0(dir_out, "SenMidasvNoSenNoMtPy.csv"))
 
 ```
 
+## Compare old ATV results with new results
 
+Array annotation downloaded [here](http://zwdzwd.github.io/InfiniumAnnotation#current).
+
+```{r message = FALSE, cache = TRUE}
+
+fdat <- fData(eset_Mvals_clean)
+#dat <- read_csv(paste0(dir_out, "ATVvControl.csv"))
+datOld <- read_csv(paste0(dir_out, "probewise_ATV.csv"))
+
+datOld %>%
+	filter(P_BH <= 0.05) %>%
+	left_join(fdat, by = "probeID") %>%
+	summarize(n_masked = sum(MASK_general), n_not_masked = sum(!MASK_general))
+
+```
 
 # R session 
 

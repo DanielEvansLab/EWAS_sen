@@ -480,6 +480,8 @@ library(multtest)</code></pre>
 ## 
 ##     plotMA</code></pre>
 <pre class="r"><code>library(RColorBrewer)</code></pre>
+<p>Set global variables.</p>
+<pre class="r"><code>dir_out &lt;- &quot;../results/&quot;</code></pre>
 </div>
 <div id="mask-and-normalize-data-and-create-eset" class="section level1">
 <h1>Mask and normalize data and create eset</h1>
@@ -618,7 +620,7 @@ betas &lt;- openSesame(IDATprefixes)</code></pre>
 
 ## Warning in readChar(con, nchars = n): truncating string with embedded nuls</code></pre>
 <pre class="r"><code>Sys.time() - t1</code></pre>
-<pre><code>## Time difference of 12.20904 mins</code></pre>
+<pre><code>## Time difference of 13.24005 mins</code></pre>
 <pre class="r"><code>#Warnings issued. These are also shown in minfi vignette, so they are expected. 
 #50: In readChar(con, nchars = n) : truncating string with embedded nuls
 #openSesame takes 12 minutes, so I&#39;ll write-out betas as a file.
@@ -2126,9 +2128,7 @@ plot_MDS(mylabel = &quot;treatment&quot;, myeset = eset_betas_clean)</code></pre
 <p>adj.P.value = BH 1995 adjusted P-value</p>
 <p>B = log-odds that the variable is differentially abundant.</p>
 <p>From the limma user guide: Suppose for example that B = 1.5. The odds of differential expression is exp(1.5)=4.48, i.e, about four and a half to one. The probability that the gene is differentially expressed is 4.48/(1+4.48)=0.82, i.e., the probability is about 82% that this gene is differentially expressed. A B-statistic of zero corresponds to a 50-50 chance that the gene is differentially expressed. The B-statistic is automatically adjusted for multiple testing by assuming that 1% of the genes are expected to be differentially expressed. The p-values and B-statistics will normally rank genes in the same order.</p>
-<pre class="r"><code>dir_out &lt;- &quot;../results/&quot;
-
-design &lt;- model.matrix(~0 + treatment, data = pData(eset_Mvals_clean))
+<pre class="r"><code>design &lt;- model.matrix(~0 + treatment, data = pData(eset_Mvals_clean))
 design</code></pre>
 <pre><code>##         treatmentnoSen_ATV treatmentnoSen_Mt_Py treatmentnoSen_Mt_noPy treatmentnoSen_noMt_Py treatmentsen_ATV treatmentsen_noMt_noPy
 ## ATV1                     1                    0                      0                      0                0                      0
@@ -2464,6 +2464,22 @@ write_csv(resultAll, path = paste0(dir_out, &quot;SenMidasvNoSenMtnoPy.csv&quot;
 resultAll &lt;- topTable(fit2, coef = &quot;SenMidasvNoSenNoMtPy&quot;, sort.by = &quot;none&quot;, number = nrow(fit2), confint = TRUE)
 write_csv(resultAll, path = paste0(dir_out, &quot;SenMidasvNoSenNoMtPy.csv&quot;))</code></pre>
 </div>
+<div id="compare-old-atv-results-with-new-results" class="section level2">
+<h2>Compare old ATV results with new results</h2>
+<p>Array annotation downloaded <a href="http://zwdzwd.github.io/InfiniumAnnotation#current">here</a>.</p>
+<pre class="r"><code>fdat &lt;- fData(eset_Mvals_clean)
+#dat &lt;- read_csv(paste0(dir_out, &quot;ATVvControl.csv&quot;))
+datOld &lt;- read_csv(paste0(dir_out, &quot;probewise_ATV.csv&quot;))
+
+datOld %&gt;%
+    filter(P_BH &lt;= 0.05) %&gt;%
+    left_join(fdat, by = &quot;probeID&quot;) %&gt;%
+    summarize(n_masked = sum(MASK_general), n_not_masked = sum(!MASK_general))</code></pre>
+<pre><code>## # A tibble: 1 x 2
+##   n_masked n_not_masked
+##      &lt;int&gt;        &lt;int&gt;
+## 1        0            0</code></pre>
+</div>
 </div>
 <div id="r-session" class="section level1">
 <h1>R session</h1>
@@ -2488,18 +2504,19 @@ write_csv(resultAll, path = paste0(dir_out, &quot;SenMidasvNoSenNoMtPy.csv&quot;
 ## 
 ## loaded via a namespace (and not attached):
 ##  [1] colorspace_1.4-1              ellipsis_0.3.1                DNAcopy_1.62.0                XVector_0.28.0                GenomicRanges_1.40.0          fs_1.4.2                      rstudioapi_0.11              
-##  [8] bit64_0.9-7                   interactiveDisplayBase_1.26.3 AnnotationDbi_1.50.1          fansi_0.4.1                   lubridate_1.7.9               xml2_1.3.2                    splines_4.0.1                
-## [15] jsonlite_1.7.0                broom_0.5.6                   shiny_1.5.0                   HDF5Array_1.16.1              BiocManager_1.30.10           compiler_4.0.1                httr_1.4.1                   
-## [22] backports_1.1.8               assertthat_0.2.1              Matrix_1.2-18                 fastmap_1.0.1                 cli_2.0.2                     later_1.1.0.1                 htmltools_0.5.0              
-## [29] tools_4.0.1                   gtable_0.3.0                  glue_1.4.1                    GenomeInfoDbData_1.2.3        rappdirs_0.3.1                Rcpp_1.0.4.6                  cellranger_1.1.0             
-## [36] vctrs_0.3.1                   preprocessCore_1.50.0         nlme_3.1-148                  xfun_0.15                     rvest_0.3.5                   mime_0.9                      lifecycle_0.2.0              
-## [43] zlibbioc_1.34.0               MASS_7.3-51.6                 scales_1.1.1                  hms_0.5.3                     promises_1.1.1                SummarizedExperiment_1.18.1   rhdf5_2.32.1                 
-## [50] yaml_2.2.1                    curl_4.3                      memoise_1.1.0                 stringi_1.4.6                 RSQLite_2.2.0                 BiocVersion_3.11.1            S4Vectors_0.26.1             
-## [57] randomForest_4.6-14           BiocParallel_1.22.0           GenomeInfoDb_1.24.2           rlang_0.4.6                   pkgconfig_2.0.3               matrixStats_0.56.0            bitops_1.0-6                 
-## [64] evaluate_0.14                 lattice_0.20-41               Rhdf5lib_1.10.0               bit_1.1-15.2                  tidyselect_1.1.0              magrittr_1.5                  R6_2.4.1                     
-## [71] IRanges_2.22.2                generics_0.0.2                DelayedArray_0.14.0           DBI_1.1.0                     pillar_1.4.4                  haven_2.3.1                   withr_2.2.0                  
-## [78] survival_3.2-3                RCurl_1.98-1.2                modelr_0.1.8                  crayon_1.3.4                  rmarkdown_2.3                 grid_4.0.1                    readxl_1.3.1                 
-## [85] blob_1.2.1                    reprex_0.3.0                  digest_0.6.25                 xtable_1.8-4                  httpuv_1.5.4                  stats4_4.0.1                  munsell_0.5.0</code></pre>
+##  [8] bit64_0.9-7                   interactiveDisplayBase_1.26.3 AnnotationDbi_1.50.1          fansi_0.4.1                   lubridate_1.7.9               xml2_1.3.2                    codetools_0.2-16             
+## [15] splines_4.0.1                 jsonlite_1.7.0                broom_0.5.6                   shiny_1.5.0                   HDF5Array_1.16.1              BiocManager_1.30.10           compiler_4.0.1               
+## [22] httr_1.4.1                    backports_1.1.8               assertthat_0.2.1              Matrix_1.2-18                 fastmap_1.0.1                 cli_2.0.2                     later_1.1.0.1                
+## [29] htmltools_0.5.0               tools_4.0.1                   gtable_0.3.0                  glue_1.4.1                    GenomeInfoDbData_1.2.3        rappdirs_0.3.1                Rcpp_1.0.4.6                 
+## [36] cellranger_1.1.0              vctrs_0.3.1                   preprocessCore_1.50.0         nlme_3.1-148                  xfun_0.15                     rvest_0.3.5                   mime_0.9                     
+## [43] lifecycle_0.2.0               zlibbioc_1.34.0               MASS_7.3-51.6                 scales_1.1.1                  hms_0.5.3                     promises_1.1.1                SummarizedExperiment_1.18.1  
+## [50] rhdf5_2.32.1                  yaml_2.2.1                    curl_4.3                      memoise_1.1.0                 stringi_1.4.6                 RSQLite_2.2.0                 BiocVersion_3.11.1           
+## [57] S4Vectors_0.26.1              randomForest_4.6-14           BiocParallel_1.22.0           GenomeInfoDb_1.24.2           rlang_0.4.6                   pkgconfig_2.0.3               matrixStats_0.56.0           
+## [64] bitops_1.0-6                  evaluate_0.14                 lattice_0.20-41               Rhdf5lib_1.10.0               bit_1.1-15.2                  tidyselect_1.1.0              magrittr_1.5                 
+## [71] R6_2.4.1                      IRanges_2.22.2                generics_0.0.2                DelayedArray_0.14.0           DBI_1.1.0                     pillar_1.4.4                  haven_2.3.1                  
+## [78] withr_2.2.0                   survival_3.2-3                RCurl_1.98-1.2                modelr_0.1.8                  crayon_1.3.4                  utf8_1.1.4                    rmarkdown_2.3                
+## [85] grid_4.0.1                    readxl_1.3.1                  blob_1.2.1                    reprex_0.3.0                  digest_0.6.25                 xtable_1.8-4                  httpuv_1.5.4                 
+## [92] stats4_4.0.1                  munsell_0.5.0</code></pre>
 </div>
 
 
