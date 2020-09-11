@@ -240,9 +240,9 @@ data.frame(missing_interval = miss_probe_f) %>%
 # Distributions
 
 ```{r cache = TRUE}
-plotDensities(eset_betas_cleaned, main = "Betas", legend = FALSE)
+plotDensities(eset_betas_clean, main = "Betas", legend = FALSE)
 
-plotDensities(eset_Mvals_cleaned, main = "M values", legend = FALSE)
+plotDensities(eset_Mvals_clean, main = "M values", legend = FALSE)
 
 ```
 
