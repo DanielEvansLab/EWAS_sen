@@ -59,9 +59,10 @@ library(sesame)
 library(wheatmap)
 library(multtest)
 library(limma)
+library(RColorBrewer)
 ```
 
-# Mask and normalize data
+# Mask and normalize data and create eset
 
 Sesame pipeline involves probe masking with pOOBAH, normalization with noob, and nonlinear dye bias correction.
 
@@ -157,17 +158,17 @@ Read in idats as sigsets, apply QC.
 The Sigset data structure is an S4 class with 6 slots. Using lapply with readIDATpair creates a list of Sigset objects. Each list element is a Sigset for each sample. To plot or anything across samples, you'll need to apply a function across the list.
 
 ```{r, cache = TRUE}
-sampsheet <- read_csv("../data/raw/idatFiles/SampleSheet.csv")
+pdat <- pData(eset_Mvals)
 IDATprefixes <- searchIDATprefixes(dir.name = "../data/raw/idatFiles/")
 ssets <- lapply(IDATprefixes, readIDATpair)
-qc10 <- do.call(rbind, lapply(ssets, function(x)
-    as.data.frame(sesameQC(x))))
+qc10 <- do.call(rbind, lapply(ssets, function(x) as.data.frame(sesameQC(x))))
 #add sample names
-cbind(names(ssets), sampsheet$Basename)
-match(names(ssets), sampsheet$Basename)
-cbind(names(ssets), sampsheet$Basename[match(names(ssets), sampsheet$Basename)], sampsheet$Basename)
-qc10$sample_name <- sampsheet$ExternalSampleID[match(names(ssets), sampsheet$Basename)]
-qc10$sample_desc <- sampsheet$Description[match(names(ssets), sampsheet$Basename)]
+sum(names(ssets) != pdat$Basename)
+cbind(names(ssets), pdat$Basename)
+qc10 <- qc10 %>%
+	mutate(sample_name = pdat$SampleLabel) %>%
+	mutate(sample_desc = pdat$Description) %>%
+	select(sample_name, sample_desc, everything())
 
 #frac_na_cg = percentage of cg probes with NA
 #mean_intensity = for type II probes. Low intensity typically bad quality
@@ -182,170 +183,171 @@ qc10 %>%
 
 ```
 
-# Mean intensity per sample
-
-```{r, results = "asis"}
-p1 <- ggplot(qc10) +
-    geom_bar(aes(sample_name, mean_intensity), stat='identity') +
-    xlab('Sample Name') + ylab('Mean Intensity') +
-    ylim(0,18000) +
-    theme(axis.text.x = element_text(angle=90, vjust=0.5, hjust=1))
-p2 <- ggplot(qc10) +
-    geom_bar(aes(sample_name, mean_intensity_total), stat='identity') +
-    xlab('Sample Name') + ylab('Mean M+U Intensity') +
-    ylim(0,18000) +
-    theme(axis.text.x = element_text(angle=90, vjust=0.5, hjust=1))
-WGG(p1) + WGG(p2, RightOf())
-
-
-```
-
-# Fraction of NA
-
-The fraction of NAs are signs of masking due to variety of reasons including failed detection, high background, putative low quality probes etc. 
-
-```{r, results = "asis"}
-p1 <- ggplot(qc10) +
-    geom_bar(aes(sample_name, num_na_cg), stat='identity') +
-    xlab('Sample Name') + ylab('Number of NAs') +
-    theme(axis.text.x = element_text(angle=90, vjust=0.5, hjust=1))
-p2 <- ggplot(qc10) +
-    geom_bar(aes(sample_name, frac_na_cg), stat='identity') +
-    xlab('Sample Name') + ylab('Fraction of NAs (%)') +
-    theme(axis.text.x = element_text(angle=90, vjust=0.5, hjust=1))
-WGG(p1) + WGG(p2, RightOf())
-
-
-```
 
 # Missing analysis of masked Betas
+
+The fraction of NAs are signs of masking due to variety of reasons including failed detection, high background, putative low quality probes etc. 
 
 Now we move back to the QCed betas generated from the first step. 
 
 First, remove failed samples and probes. How many samples are missing across all probes? How many probes are missing across all samples? 
 
 ```{r, cache = TRUE}
-betasDF <- read_csv("../data/formatted/betas.csv")
-sampsheet <- read_csv("../data/raw/idatFiles/SampleSheet.csv")
-#add sample names
-cbind(names(betasDF)[2:ncol(betasDF)], sampsheet$Basename)
-#Unlike last time, now want to match basename to order in betasDF to resort the sample sheet
-match(sampsheet$Basename, names(betasDF[2:ncol(betasDF)]))
-cbind(names(betasDF)[2:ncol(betasDF)], 
-      sampsheet$Basename[match(sampsheet$Basename, names(betasDF)[2:ncol(betasDF)])],
-      sampsheet$Basename
-      )
-#reorder sample sheet to match betasDF
-sampsheet <- sampsheet[match(sampsheet$Basename, names(betasDF)[2:ncol(betasDF)]),]
-
-#Convert betasDF to matrix for faster comp
-betaMat <- betasDF %>%
-	mutate(probeID = NULL) %>%
-	as.matrix
-	
-# Add dimnames to betaMat so function outputs are named
-dimnames(betaMat) <- list(betasDF$probeID, sampsheet$SampleLabel) 
-miss_sample <- apply(betaMat, 2, function(x) sum(is.na(x))/length(x) )
-miss_probe_blank <- apply(betaMat, 1, function(x) sum(is.na(x))/length(x) )
+dim(eset_Mvals) #865,918 probes
+e <- exprs(eset_Mvals)
+pdat <- pData(eset_Mvals)
+miss_sample <- apply(e, 2, function(x) sum(is.na(x))/length(x) )
+miss_probe_blank <- apply(e, 1, function(x) sum(is.na(x))/length(x) )
 length(miss_sample)
 length(miss_probe_blank)
 sum(miss_sample >= 0.95) #0 samples have missing rate greater than 95% 
 #no samples that are essentially blanks.
+#show missingness for all samples
+data.frame(sampleID = names(miss_sample), treatment = pdat$treatment, miss_sample = miss_sample, stringsAsFactors = F) %>%
+  kable()
+
 sum(miss_probe_blank >= 1) #119,631 completely missing probes. Many are masked by design.
 sum(miss_probe_blank >= 0.95) #121,925 Remove these, then determine number of samples with missing rate>0.05.
-head(sort(miss_probe_blank, decreasing = TRUE))
+
 #keep probes with < 0.95 missingness
-betaMat <- betaMat[miss_probe_blank < 0.95, ] #743,993 probes left
-dim(betaMat)
+eset_Mvals_clean <- eset_Mvals[miss_probe_blank < 0.95,]
+dim(eset_Mvals_clean) #743,993 probes
+eset_betas_clean <- eset_betas[miss_probe_blank < 0.95,]
+dim(eset_betas_clean)
 
 #After removing failed probes, estimate sample missing rate.
-miss_sample <- apply(betaMat, 2, function(x) sum(is.na(x))/length(x) )
-miss_probe <- apply(betaMat, 1, function(x) sum(is.na(x))/length(x) )
-length(miss_sample)
-length(miss_probe)
-sort(miss_sample, decreasing = TRUE)
-#verify that blank probes are removed 
-sum(miss_probe >= 1) 
-sum(miss_probe >= 0.95) 
-head(sort(miss_probe, decreasing = TRUE))
+e <- exprs(eset_Mvals_clean)
+miss_sample <- apply(e, 2, function(x) sum(is.na(x))/length(x) )
+miss_probe <- apply(e, 1, function(x) sum(is.na(x))/length(x) )
+
+data.frame(sampleID = names(miss_sample), treatment = pdat$treatment, miss_sample = miss_sample, stringsAsFactors = F) %>%
+  kable()
+
+#After removing failed probes, estimate probe missing rate
+
+sum(miss_probe == 0) #692,879 probes with no missings
+sum(miss_probe > 0) #51,114 probes with missings in at least one sample
+miss_probe_f <- cut(miss_probe, breaks = seq(0, 1, 0.1))
+table(miss_probe_f)
+
+data.frame(missing_interval = miss_probe_f) %>%
+	filter(!is.na(missing_interval)) %>%
+	ggplot(aes(missing_interval)) + 
+	  geom_bar()
+
+```
+
+# Distributions
+
+```{r cache = TRUE}
+plotDensities(eset_betas_cleaned, main = "Betas", legend = FALSE)
+
+plotDensities(eset_Mvals_cleaned, main = "M values", legend = FALSE)
+
+```
+
+# PCA
+```{r cache = TRUE}
+plot_MDS <- function(mylabel, myeset){
+	group <- pData(myeset)[[mylabel]]
+	col.group <- group
+	levels(col.group) <- brewer.pal(nlevels(col.group), "Accent")
+	col.group <- as.character(col.group)
+	plotMDS(myeset, labels = group, col = col.group, gene.selection = "common", main = paste(mylabel, "labels"))
+}
+
+plot_MDS(mylabel = "treatment", myeset = eset_betas_clean)
+plot_MDS(mylabel = "treatment", myeset = eset_Mvals_clean)
 
 
 ```
 
-
-
-# Create contrasts in sample sheet
-```{r, cache = TRUE}
-cbind(colnames(betaMat),
-      sampsheet$SampleLabel)
-
-#create new variables in sample sheet to indicate contrasts
-#ATV contrast
-samp <- sampsheet %>%
-	mutate(ATV = ifelse(str_detect(SampleLabel, "\\+ ATV"), 1L, 0L))
-samp$ATV[str_detect(samp$SampleLabel, ".*ATV.*", negate = TRUE)] <- NA
-cbind(samp$ATV, samp$SampleLabel)
-cbind(samp$SampleLabel, samp$Description)
-
-#MiDAS contrast
-
-cbind(samp$SampleLabel, samp$Description, str_detect(samp$SampleLabel, "mtD -P [1-9]"))
-cbind(samp$SampleLabel, samp$Description, str_detect(samp$SampleLabel, "C -P [1-9]"))
-
-samp <- sampsheet %>%
-	mutate(ATV = ifelse(str_detect(SampleLabel, "mtD -P [1-9]"), 1L, 0L))
-samp$ATV[str_detect(samp$SampleLabel, ".*ATV.*", negate = TRUE)] <- NA
-```
 
 # Probe-wise analysis of senescence treatment
 
+## Model parameterization
+
+Group means parameterization. No intercept. 
+
+$$ Y = B_1X_1 + B_2X_2 + B_3X_3 + B_4X_4 + B_5X_5 + B_6X_6 + \epsilon $$
+
+$B_1$ = mean expression level in noSen_ATV. 
+
+$B_2$ = mean expression level in noSen_Mt_Py. 
+
+$B_3$ = mean expression level in noSen_Mt_noPy. 
+
+$B_4$ = mean expression level in noSen_noMt_Py.
+
+$B_5$ = mean expression level in sen_ATV.
+
+$B_6$ = mean expression level in sen_noMt_noPy.
+
+After model fit, contrasts are set that represent difference in group means.
+
+logFC = estimate of the log2-fold-change
+
+CI.L = lower 95% confidence interval for logFC
+
+CI.R = upper 95% confidence interval for logFC
+
+AveExpr = average log2-expression for the probe over all samples
+
+t = moderated t-statistic
+
+P.value = unadjusted P-value
+
+adj.P.value = BH 1995 adjusted P-value
+
+B = log-odds that the variable is differentially abundant. 
+
+From the limma user guide: Suppose for example that B = 1.5. The odds of differential expression is exp(1.5)=4.48, i.e, about four and a half to one. The probability that the gene is differentially expressed is 4.48/(1+4.48)=0.82, i.e., the probability is about 82% that this gene is differentially expressed. A B-statistic of zero corresponds to a 50-50 chance that the gene is differentially expressed. The B-statistic is automatically adjusted for multiple testing by assuming that 1% of the genes are expected to be differentially expressed. The p-values and B-statistics will normally rank genes in the same order. 
+
+
 ```{r, cache = TRUE}
+dir_out <- "../results/"
 
-lm_fun <- function(cg){
-  out <- tryCatch({
-    lm1 <- t.test(cg ~ ATV, data = samp, na.action = na.omit)
-    tstat <- lm1$statistic
-    p <- lm1$p.value
-    return(c(tstat, p))
-  },
-  error = function(e) rep(NA, 2)
-  )
-}
+design <- model.matrix(~0 + treatment, data = pData(eset_Mvals_clean))
+design
+colSums(design)
 
-results <- apply(betaMat, 1, lm_fun)
-results <- t(results)
-colnames(results) <- c("T_STAT", "P")
-resultsTB <- as_tibble(results)
-resultsTB <- resultsTB %>%
-	mutate(probeID = rownames(results)) %>%
-	select(probeID, everything())
-adjp1 <- mt.rawp2adjp(resultsTB[["P"]], proc = "BH")
-resultsTB <- resultsTB %>%
-	mutate(P_BH = adjp1$adjp[order(adjp1$index),"BH"])
+cm <- makeContrasts(ATVvControl = treatmentsen_ATV - treatmentnoSen_ATV,
+		    SenMidasvNoSenMtnoPy = treatmentsen_noMt_noPy - treatmentnoSen_Mt_noPy,
+		    SenMidasvNoSenNoMtPy = treatmentsen_noMt_noPy - treatmentnoSen_noMt_Py,
+		    levels = design
+		    )
+fit <- lmFit(eset_Mvals_clean, design)
+fit2 <- contrasts.fit(fit, contrasts = cm)
+fit2 <- eBayes(fit2)
 
-write_csv(resultsTB, "../results/probewise_ATV.csv")
+results <- decideTests(fit2)
+summary(results)
+vennDiagram(results)
 
-resultsTB %>%
-	filter(P_BH <= 0.05) %>%
-	count()
-resultsTB %>%
-	filter(P_BH <= 0.05) %>%
-	kable(digits = 8)
+volcanoplot(fit2, coef = "ATVvControl" , main = "ATV vs control")
+volcanoplot(fit2, coef = "SenMidasvNoSenMtnoPy", main = "MiDAS vs control with MtDNA")
+volcanoplot(fit2, coef = "SenMidasvNoSenNoMtPy", main = "MiDAS vs control without mtDNA")
 
-resultsTB %>%
-	arrange(P) %>%
-	head() %>%
-	kable(digits = 8)
-```
+annot_cols <- c("CpG_chrm", "CpG_beg", "probeID", "gene")
+topTable(fit2, coef = "ATVvControl", genelist = fit2$genes[,annot_cols], p.value = 0.05, confint = TRUE) %>%
+	kable()
+topTable(fit2, coef = "SenMidasvNoSenMtnoPy", genelist = fit2$genes[,annot_cols], p.value = 0.05, confint = TRUE) %>%
+	kable()
+topTable(fit2, coef = "SenMidasvNoSenNoMtPy", genelist = fit2$genes[,annot_cols], p.value = 0.05, confint = TRUE) %>%
+	kable()
 
+#save results 
+resultAll <- topTable(fit2, coef = "ATVvControl", sort.by = "none", number = nrow(fit2), confint = TRUE)
+write_csv(resultAll, path = paste0(dir_out, "ATVvControl.csv"))
+resultAll <- topTable(fit2, coef = "SenMidasvNoSenMtnoPy", sort.by = "none", number = nrow(fit2), confint = TRUE)
+write_csv(resultAll, path = paste0(dir_out, "SenMidasvNoSenMtnoPy.csv"))
+resultAll <- topTable(fit2, coef = "SenMidasvNoSenNoMtPy", sort.by = "none", number = nrow(fit2), confint = TRUE)
+write_csv(resultAll, path = paste0(dir_out, "SenMidasvNoSenNoMtPy.csv"))
 
-# Probe hg19 annotation
-
-```{r, eval = FALSE}
-EPIC.hg19.manifest <- sesameDataGet("EPIC.hg19.manifest")
-str(EPIC.hg19.manifest)
 
 ```
+
+
 
 # R session 
 
