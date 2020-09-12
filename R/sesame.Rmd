@@ -363,14 +363,22 @@ Array annotation downloaded [here](http://zwdzwd.github.io/InfiniumAnnotation#cu
 
 ```{r message = FALSE, cache = TRUE}
 
-fdat <- fData(eset_Mvals)
-#dat <- read_csv(paste0(dir_out, "ATVvControl.csv"))
+fdat <- read_tsv("~/bigdata/EWAStools/arrayAnnotation/EPIC.hg19.manifest.tsv")
+dat <- read_csv(paste0(dir_out, "ATVvControl.csv"))
 datOld <- read_csv(paste0(dir_out, "probewise_ATV.csv"))
 
 datOld %>%
 	filter(P_BH <= 0.05) %>%
 	left_join(fdat, by = "probeID") %>%
 	summarize(n_masked = sum(MASK_general), n_not_masked = sum(!MASK_general))
+
+names(datOld)[2:4] <- paste("v1", names(datOld)[2:4], sep = "_")
+datOld %>%
+	filter(v1_P_BH <= 0.05) %>%
+	left_join(dat, by = "probeID") %>%
+	arrange(v1_P_BH) %>%
+	kable(digits = 9)
+
 
 ```
 
