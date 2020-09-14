@@ -54,7 +54,7 @@ Can check version of loaded packages with sessionInfo()
 Sesame version 1.6 used.
 
 # Load libraries
-```{r}
+```{r message = FALSE}
 library(tidyverse)
 library(knitr)
 library(sesame)
@@ -83,7 +83,7 @@ The pipeline can be thought of as adding pOOBAH to noob. Then also the non-linea
 
 OpenSesame takes 12 minutes, so run it once and save the output.
 
-```{r, cache = TRUE}
+```{r, cache = TRUE, message = FALSE, warnings = FALSE}
 
 IDATprefixes <- searchIDATprefixes(dir.name = "../data/raw/idatFiles/")
 t1 <- Sys.time()
@@ -250,10 +250,27 @@ data.frame(missing_interval = miss_probe_f) %>%
 
 # Distributions
 
+## All samples combined
+
 ```{r cache = TRUE}
 plotDensities(eset_betas_clean, main = "Betas", legend = FALSE)
 
 plotDensities(eset_Mvals_clean, main = "M values", legend = FALSE)
+
+```
+
+## Split-up samples
+
+```{r cache = TRUE}
+p1 <- pData(eset_Mvals_clean)
+eset_Mvals_sub <- eset_Mvals_clean[,which(p1$treatment == "senATV" | p1$treatment == "noSen_ATV")]
+plotDensities(eset_Mvals_sub, main = "M values ATV", legend = TRUE)
+
+eset_Mvals_sub <- eset_Mvals_clean[,which(p1$treatment == "sen_noMt_noPy"  | p1$treatment == "noSen_noMt_Py" | p1$treatment == "noSen_Mt_noPy" | p1$treatment == "noSen_Mt_Py")]
+plotDensities(eset_Mvals_sub, main = "M values MiDAS sen and controls", legend = TRUE)
+
+eset_Mvals_sub <- eset_Mvals_clean[,which(p1$treatment == "noSen_noMt_Py" | p1$treatment == "noSen_Mt_noPy" | p1$treatment == "noSen_Mt_Py")]
+plotDensities(eset_Mvals_sub, main = "M values MiDAS controls", legend = TRUE)
 
 ```
 
@@ -262,7 +279,7 @@ plotDensities(eset_Mvals_clean, main = "M values", legend = FALSE)
 plot_MDS <- function(mylabel, myeset){
 	group <- pData(myeset)[[mylabel]]
 	col.group <- group
-	levels(col.group) <- brewer.pal(nlevels(col.group), "Accent")
+	levels(col.group) <- brewer.pal(nlevels(col.group), "Set1")
 	col.group <- as.character(col.group)
 	plotMDS(myeset, labels = group, col = col.group, gene.selection = "common", main = paste(mylabel, "labels"))
 }
