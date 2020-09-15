@@ -83,7 +83,7 @@ The pipeline can be thought of as adding pOOBAH to noob. Then also the non-linea
 
 OpenSesame takes 12 minutes, so run it once and save the output.
 
-```{r, cache = TRUE, message = FALSE, warnings = FALSE}
+```{r, cache = TRUE, message = FALSE, warning = FALSE}
 
 IDATprefixes <- searchIDATprefixes(dir.name = "../data/raw/idatFiles/")
 t1 <- Sys.time()
@@ -153,11 +153,14 @@ eset_betas <- ExpressionSet(assayData = betas,
 			    featureData = AnnotatedDataFrame(dat_fData)
 			    )
 
+write_rds(eset_betas, path = "../data/formatted/eset_betas.rds")
+
 eset_Mvals <- ExpressionSet(assayData = Mvals,
 			    phenoData = AnnotatedDataFrame(sampsheet),
 			    featureData = AnnotatedDataFrame(dat_fData)
 			    )
 
+write_rds(eset_Mvals, path = "../data/formatted/eset_Mvals.rds")
 ```
 
 # QC on IDATs
@@ -168,7 +171,7 @@ Read in idats as sigsets, apply QC.
 
 The Sigset data structure is an S4 class with 6 slots. Using lapply with readIDATpair creates a list of Sigset objects. Each list element is a Sigset for each sample. To plot or anything across samples, you'll need to apply a function across the list.
 
-```{r, cache = TRUE}
+```{r, cache = TRUE, message = FALSE, warning = FALSE}
 pdat <- pData(eset_Mvals)
 IDATprefixes <- searchIDATprefixes(dir.name = "../data/raw/idatFiles/")
 ssets <- lapply(IDATprefixes, readIDATpair)
@@ -250,6 +253,23 @@ data.frame(missing_interval = miss_probe_f) %>%
 
 # Distributions
 
+Summary of sample IDs and descriptions
+
+```{r cache = TRUE}
+p1 <- pData(eset_Mvals_clean)
+p1 %>%
+	select(sampleID, Description) %>%
+	kable()
+```
+
+## Boxplots of M-values
+
+```{r}
+boxplot(exprs(eset_Mvals_clean), las = 2, ylab = "M-values")
+abline(h = median(exprs(eset_Mvals_clean)), col = "blue")
+
+```
+
 ## All samples combined
 
 ```{r cache = TRUE}
@@ -263,15 +283,24 @@ plotDensities(eset_Mvals_clean, main = "M values", legend = FALSE)
 
 ```{r cache = TRUE}
 p1 <- pData(eset_Mvals_clean)
+p1 %>%
+	select(sampleID, SampleLabel, Description, treatment) %>%
+	kable()
+
 eset_Mvals_sub <- eset_Mvals_clean[,which(p1$treatment == "senATV" | p1$treatment == "noSen_ATV")]
 plotDensities(eset_Mvals_sub, main = "M values ATV", legend = TRUE)
 
 eset_Mvals_sub <- eset_Mvals_clean[,which(p1$treatment == "sen_noMt_noPy"  | p1$treatment == "noSen_noMt_Py" | p1$treatment == "noSen_Mt_noPy" | p1$treatment == "noSen_Mt_Py")]
 plotDensities(eset_Mvals_sub, main = "M values MiDAS sen and controls", legend = TRUE)
 
+eset_Mvals_sub <- eset_Mvals_clean[,which(p1$treatment == "sen_noMt_noPy")]
+plotDensities(eset_Mvals_sub, main = "M values MiDAS sen", legend = TRUE)
+
 eset_Mvals_sub <- eset_Mvals_clean[,which(p1$treatment == "noSen_noMt_Py" | p1$treatment == "noSen_Mt_noPy" | p1$treatment == "noSen_Mt_Py")]
 plotDensities(eset_Mvals_sub, main = "M values MiDAS controls", legend = TRUE)
 
+eset_Mvals_sub <- eset_Mvals_clean[,which(p1$treatment == "noSen_noMt_Py")]
+plotDensities(eset_Mvals_sub, main = "M values MiDAS controls no MT Py", legend = TRUE)
 ```
 
 # PCA
@@ -280,8 +309,9 @@ plot_MDS <- function(mylabel, myeset){
 	group <- pData(myeset)[[mylabel]]
 	col.group <- group
 	levels(col.group) <- brewer.pal(nlevels(col.group), "Set1")
-	col.group <- as.character(col.group)
-	plotMDS(myeset, labels = group, col = col.group, gene.selection = "common", main = paste(mylabel, "labels"))
+	col.group.ch <- as.character(col.group)
+	plotMDS(myeset, col = col.group.ch, gene.selection = "common", main = paste(mylabel, "labels"), pch = 16)
+	legend("topleft", fill = levels(col.group), legend = levels(group))
 }
 
 plot_MDS(mylabel = "treatment", myeset = eset_betas_clean)
