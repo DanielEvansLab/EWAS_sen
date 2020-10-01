@@ -1,8 +1,19 @@
 ---
 title: "EWAS senescence"
 author: "Dan Evans"
-date: "Last update: `r format(Sys.time(), '%d %B, %Y')`"
-output: html_document
+output: 
+  BiocStyle::html_document:
+    toc_float: true
+    toc_depth: 3
+    fig_caption: yes
+
+fontsize: 14 pt
+
+vignette: >
+  %\VignetteIndexEntry{EWAS senescence}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+
 ---
 
 # EWAS terms
@@ -264,7 +275,7 @@ p1 %>%
 
 ## Boxplots of M-values
 
-```{r}
+```{r cache = TRUE}
 boxplot(exprs(eset_Mvals_clean), las = 2, ylab = "M-values")
 abline(h = median(exprs(eset_Mvals_clean)), col = "blue")
 
