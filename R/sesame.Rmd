@@ -73,11 +73,15 @@ library(wheatmap)
 library(multtest)
 library(limma)
 library(RColorBrewer)
+library(minfi)
+library(IlluminaHumanMethylationEPICmanifest)
+library(IlluminaHumanMethylationEPICanno.ilm10b4.hg19)
 ```
 
 Set global variables.
 
 ```{r}
+BiocManager::install("IlluminaHumanMethylationEPICmanifest")
 
 dir_out <- "../results/"
 
@@ -419,6 +423,14 @@ write_csv(resultAll, path = paste0(dir_out, "SenMidasvNoSenNoMtPy.csv"))
 
 Array annotation downloaded [here](http://zwdzwd.github.io/InfiniumAnnotation#current).
 
+There are many differences between old and new ATV results. Differences include:
+
+1. Preprocessing. Old results from minfi noob preprocessing. New results from sesame noob and pOOBAH.
+
+2. Methylation values. Old results calculated from Betas. New results calculated from M-values.
+
+3. Association testing. Old results calculated from t.test. New results calculated from moderated t-tests using limma. Limma should have more power.
+
 ```{r message = FALSE, cache = TRUE}
 
 fdat <- read_tsv("~/bigdata/EWAStools/arrayAnnotation/EPIC.hg19.manifest.tsv")
@@ -434,11 +446,114 @@ names(datOld)[2:4] <- paste("v1", names(datOld)[2:4], sep = "_")
 datOld %>%
 	filter(v1_P_BH <= 0.05) %>%
 	left_join(dat, by = "probeID") %>%
+	select(probeID, v1_T_STAT, v1_P, v1_P_BH, P.Value, adj.P.Val, everything()) %>%
 	arrange(v1_P_BH) %>%
 	kable(digits = 9)
 
+datMerge <- datOld %>%
+	left_join(dat, by = "probeID") %>%
+	filter(!is.na(v1_T_STAT)) %>%
+	filter(!is.na(t))
+
+plot(datMerge$v1_T_STAT, datMerge$t)
 
 ```
+
+# Minfi processing
+
+## Noob preprocessing
+Can I reproduce the results I previously generated using noob data from Nate? 
+
+This code chunk creates a noob processed dataset from the raw data. Should be the same as data from Nate.
+
+Output is a matrix of betas. 
+
+```{r cache=TRUE}
+
+baseDir <- "../data/raw/idatFiles/"
+targets <- read.csv(paste0(baseDir, "SampleSheet.csv"))
+targets$BasenameOriginal <- as.character(targets$Basename)
+targets$Slide <- substr(targets$Basename, 1, 12)
+targets$Basename <- paste0(baseDir, targets$Slide, "/", targets$BasenameOriginal)
+
+RGset <- read.metharray.exp(base = NULL, targets = targets, recursive = TRUE, force = TRUE)
+
+#must load manifest to perform preprocessNoob
+Mset <- preprocessNoob(RGset)
+gset <- mapToGenome(Mset)
+grset <- ratioConvert(gset, what = "both")
+beta_n <- getBeta(grset)
+ewas <- data.frame(ID = row.names(beta_n), beta_n)
+names(ewas) <- str_replace_all(names(ewas), pattern = "^X", replacement = "")
+names(ewas)[1] <- "probeID"
+
+#Targets and sample IDs in same order
+sum(names(ewas)[-1] != targets$BasenameOriginal)
+cbind(names(ewas)[-1], targets$BasenameOriginal)
+
+#create new variables in sample sheet to indicate contrasts
+samp <- targets %>%
+	mutate(ATV = ifelse(str_detect(ExternalSampleID, "\\+ ATV"), 1L, 0L))
+samp$ATV[str_detect(samp$ExternalSampleID, ".*ATV.*", negate = TRUE)] <- NA
+cbind(samp$ATV, samp$ExternalSampleID)
+
+betaMat <- ewas %>%
+	select(-probeID) %>%
+	as.matrix
+
+```
+
+## Association testing
+
+Now perform t-test using the newly created noob processed data. Are my new results the same as my old results? 
+
+
+```{r cache = TRUE}
+lm_fun <- function(cg){
+  out <- tryCatch({
+    lm1 <- t.test(cg ~ ATV, data = samp, na.action = na.omit)
+    tstat <- lm1$statistic
+    p <- lm1$p.value
+    return(c(tstat, p))
+  
+  }, error = function(e) rep(NA, 2)
+		  )
+}
+
+
+results <- apply(betaMat, 1, lm_fun)
+results <- t(results)
+colnames(results) <- c("T_STAT", "P")
+resultsTB <- as_tibble(results)
+resultsTB <- resultsTB %>%
+	mutate(probeID = row.names(results)) %>%
+	select(probeID, everything())
+adjp1 <- mt.rawp2adjp(resultsTB[["P"]], proc = "BH")
+resultsTB <- resultsTB %>%
+	mutate(P_BH = adjp1$adjp[order(adjp1$index), "BH"])
+
+sum(resultsTB$P_BH <= 0.05)
+
+#Are results the same?
+datOld <- read_csv("../results/probewise_ATV.csv")
+sum(datOld$P_BH <= 0.05)
+
+names(datOld)[2:4] <- paste("v1", names(datOld)[2:4], sep = "_")
+datOld %>%
+	filter(v1_P_BH <= 0.05) %>%
+	left_join(resultsTB, by = "probeID") %>%
+	arrange(v1_P_BH) %>%
+	kable(digits = 9)
+
+datMerge <- datOld %>%
+	left_join(resultsTB, by = "probeID") %>%
+	filter(!is.na(v1_T_STAT)) %>%
+	filter(!is.na(T_STAT))
+
+plot(datMerge$v1_T_STAT, datMerge$T_STAT)
+```
+
+
 
 # R session 
 
