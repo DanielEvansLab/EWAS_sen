@@ -128,7 +128,7 @@ cbind(colnames(betas),sampsheet$Basename) #visually show not in same order
 cbind(colnames(betas),sampsheet$Basename[match(sampsheet$Basename, colnames(betas))])#now in correct order
 #reorder sampsheet to match sample order in data matrix
 sampsheet <- sampsheet[match(sampsheet$Basename, colnames(betas)),]
-sampsheet <- rename(sampsheet, sampleID = ExternalSampleID)
+sampsheet <- dplyr::rename(sampsheet, sampleID = ExternalSampleID)
 cbind(sampsheet$sampleID, sampsheet$SampleLabel, sampsheet$Description)
 sampsheet$sampleID[1:8] <- paste0("ATV", 1:8)
 sampsheet$sampleID[9:32] <- paste0("midas", 1:24) 
