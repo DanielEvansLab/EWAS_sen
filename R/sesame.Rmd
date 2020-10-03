@@ -16,7 +16,7 @@ vignette: >
 
 ---
 
-# EWAS terms
+# EWAS introduction
 
 DNA methylation quantity is expressed as $\beta$ 
 
@@ -33,7 +33,9 @@ A detection probability represents the probability of a detected signal being ba
 
 Standard workflows suggest to remove data points with detection P-value > 0.05.  
 
-# Processing Illumina EPIC array with Sesame package
+# Sesame package processing of Illumina EPIC array
+
+## Sesame package intro
 
 - EWAS array Illumina EPIC 850 
 
@@ -47,7 +49,7 @@ Standard workflows suggest to remove data points with detection P-value > 0.05.
 knitr::opts_chunk$set(cache.lazy = FALSE)
 ```
 
-# Sesame installation on UCR cluster
+## Sesame installation on UCR cluster
 
 Installation of sesame and dependencies went fine, no errors or warnings.
 
@@ -64,7 +66,10 @@ Can check version of loaded packages with sessionInfo()
 
 Sesame version 1.6 used.
 
-# Load libraries
+## Load libraries
+
+This includes libraries for Sesame and Minfi.
+
 ```{r message = FALSE}
 library(tidyverse)
 library(knitr)
@@ -81,14 +86,13 @@ library(IlluminaHumanMethylationEPICanno.ilm10b4.hg19)
 Set global variables.
 
 ```{r}
-BiocManager::install("IlluminaHumanMethylationEPICmanifest")
 
 dir_out <- "../results/"
 
 
 ```
 
-# Mask and normalize data and create eset
+## Mask and normalize data and create eset
 
 Sesame pipeline involves probe masking with pOOBAH, normalization with noob, and nonlinear dye bias correction.
 
@@ -106,7 +110,6 @@ betas <- openSesame(IDATprefixes)
 Sys.time() - t1
 #Warnings issued. These are also shown in minfi vignette, so they are expected. 
 #50: In readChar(con, nchars = n) : truncating string with embedded nuls
-#openSesame takes 12 minutes, so I'll write-out betas as a file.
 
 #Convert Betas to Mvalues. Check if there are beta values that will result in infinite results.
 sum(is.na(betas))
@@ -178,7 +181,7 @@ eset_Mvals <- ExpressionSet(assayData = Mvals,
 write_rds(eset_Mvals, path = "../data/formatted/eset_Mvals.rds")
 ```
 
-# QC on IDATs
+## QC on IDATs
 
 The sesame pipeline above already produced cleaned data. This chunk goes backwards and examines QC of the raw data again.
 
@@ -213,7 +216,7 @@ qc10 %>%
 ```
 
 
-# Missing analysis of masked Betas
+## Missing analysis of masked Betas
 
 The fraction of NAs are signs of masking due to variety of reasons including failed detection, high background, putative low quality probes etc. 
 
@@ -266,7 +269,7 @@ data.frame(missing_interval = miss_probe_f) %>%
 
 ```
 
-# Distributions
+## Distributions
 
 Summary of sample IDs and descriptions
 
@@ -277,7 +280,7 @@ p1 %>%
 	kable()
 ```
 
-## Boxplots of M-values
+### Boxplots of M-values
 
 ```{r cache = TRUE}
 boxplot(exprs(eset_Mvals_clean), las = 2, ylab = "M-values")
@@ -285,7 +288,7 @@ abline(h = median(exprs(eset_Mvals_clean)), col = "blue")
 
 ```
 
-## All samples combined
+### All samples combined
 
 ```{r cache = TRUE}
 plotDensities(eset_betas_clean, main = "Betas", legend = FALSE)
@@ -294,7 +297,7 @@ plotDensities(eset_Mvals_clean, main = "M values", legend = FALSE)
 
 ```
 
-## Split-up samples
+### Split-up samples
 
 ```{r cache = TRUE}
 p1 <- pData(eset_Mvals_clean)
@@ -318,7 +321,7 @@ eset_Mvals_sub <- eset_Mvals_clean[,which(p1$treatment == "noSen_noMt_Py")]
 plotDensities(eset_Mvals_sub, main = "M values MiDAS controls no MT Py", legend = TRUE)
 ```
 
-# PCA
+## PCA
 ```{r cache = TRUE}
 plot_MDS <- function(mylabel, myeset){
 	group <- pData(myeset)[[mylabel]]
@@ -336,9 +339,9 @@ plot_MDS(mylabel = "treatment", myeset = eset_Mvals_clean)
 ```
 
 
-# Probe-wise analysis of senescence treatment
+## Probe-wise analysis of senescence treatment
 
-## Model parameterization
+### Model parameterization
 
 Group means parameterization. No intercept. 
 
@@ -419,9 +422,11 @@ write_csv(resultAll, path = paste0(dir_out, "SenMidasvNoSenNoMtPy.csv"))
 
 ```
 
-## Compare old ATV results with new results
+### Compare old ATV results with sesame results
 
 Array annotation downloaded [here](http://zwdzwd.github.io/InfiniumAnnotation#current).
+
+Old results are my quick t-tests performed on Nate's Noob-normalized data using minfi. I saw lots of significant ATV associations in old results, but not from the sesame-based results. What are the differences? 
 
 There are many differences between old and new ATV results. Differences include:
 
@@ -430,6 +435,8 @@ There are many differences between old and new ATV results. Differences include:
 2. Methylation values. Old results calculated from Betas. New results calculated from M-values.
 
 3. Association testing. Old results calculated from t.test. New results calculated from moderated t-tests using limma. Limma should have more power.
+
+Results below show there are many differences. 
 
 ```{r message = FALSE, cache = TRUE}
 
@@ -461,14 +468,15 @@ plot(datMerge$v1_T_STAT, datMerge$t)
 
 # Minfi processing
 
-## Noob preprocessing
-Can I reproduce the results I previously generated using noob data from Nate? 
+Since the sesame-based results are so different from the noob-normalized minfi results, let me try minfi noob myself, with some additional QC steps. Besides, the minfi noob results had many significant associations. 
+
+## Replicate old results from Nate's data
 
 This code chunk creates a noob processed dataset from the raw data. Should be the same as data from Nate.
 
-Output is a matrix of betas. 
+Output is a matrix of betas. Then, apply unpaired t-test and compare to my previous results. If I can replicate results, then I start adding different layers to see if significant associations can be retained while still performing robust QC.
 
-```{r cache=TRUE}
+```{r cache = TRUE}
 
 baseDir <- "../data/raw/idatFiles/"
 targets <- read.csv(paste0(baseDir, "SampleSheet.csv"))
@@ -476,10 +484,10 @@ targets$BasenameOriginal <- as.character(targets$Basename)
 targets$Slide <- substr(targets$Basename, 1, 12)
 targets$Basename <- paste0(baseDir, targets$Slide, "/", targets$BasenameOriginal)
 
-RGset <- read.metharray.exp(base = NULL, targets = targets, recursive = TRUE, force = TRUE)
+rgSet <- read.metharray.exp(base = NULL, targets = targets, recursive = TRUE, force = TRUE)
 
 #must load manifest to perform preprocessNoob
-Mset <- preprocessNoob(RGset)
+Mset <- preprocessNoob(rgSet)
 gset <- mapToGenome(Mset)
 grset <- ratioConvert(gset, what = "both")
 beta_n <- getBeta(grset)
@@ -501,14 +509,7 @@ betaMat <- ewas %>%
 	select(-probeID) %>%
 	as.matrix
 
-```
-
-## Association testing
-
-Now perform t-test using the newly created noob processed data. Are my new results the same as my old results? 
-
-
-```{r cache = TRUE}
+# Association testing
 lm_fun <- function(cg){
   out <- tryCatch({
     lm1 <- t.test(cg ~ ATV, data = samp, na.action = na.omit)
@@ -534,7 +535,7 @@ resultsTB <- resultsTB %>%
 
 sum(resultsTB$P_BH <= 0.05)
 
-#Are results the same?
+#Are new results the same as the old results from data from Nate?
 datOld <- read_csv("../results/probewise_ATV.csv")
 sum(datOld$P_BH <= 0.05)
 
@@ -553,6 +554,96 @@ datMerge <- datOld %>%
 plot(datMerge$v1_T_STAT, datMerge$T_STAT)
 ```
 
+## Minfi pipeline, data import 
+
+Minfi noob normalized data with unpaired t-test replicates the old results. 
+
+Now, continue with minfi processing with additional QC followed by limma to see how results look.
+
+Create an RGChannelSet object. 
+
+```{r cache=TRUE}
+baseDir <- "../data/raw/idatFiles/"
+targets <- read.csv(paste0(baseDir, "SampleSheet.csv"))
+targets$BasenameOriginal <- as.character(targets$Basename)
+targets$Slide <- substr(targets$Basename, 1, 12)
+targets$Basename <- paste0(baseDir, targets$Slide, "/", targets$BasenameOriginal)
+
+rgSet <- read.metharray.exp(base = NULL, targets = targets, recursive = TRUE, force = TRUE)
+
+#Add nicer sample IDs
+sum(colnames(rgSet) != targets$BasenameOriginal)
+cbind(colnames(rgSet), targets$BasenameOriginal)
+cbind(targets$ExternalSampleID, targets$Description)
+targets$sampleID <- ""
+targets$sampleID[1:24] <- paste0("midas", 1:24)
+targets$sampleID[25:32] <- paste0("ATV", 1:8)
+
+translate_trt <- function(ch){
+  switch(ch,
+	 "Non-senescent DMSO-treated control cells" = "noSen_ATV",
+	 "Non-senescent mtDNA-containing controls no pyruvate" = "noSen_Mt_noPy", 
+	 "Non-senescent mtDNA-containing controls with pyruvate" = "noSen_Mt_Py",
+	 "Non-senescent mtDNA-depleted controls cells with pyruvate" = "noSen_noMt_Py",
+	 "Senescent ATV-treated cells" = "sen_ATV",
+	 "Senescent mtDNA-depleted cells no pyruvate" = "sen_noMt_noPy"
+	 )
+}
+
+targets <- targets %>%
+	mutate(treatment = map_chr(Description, translate_trt)) %>%
+	mutate(treatment = factor(treatment))
+
+cbind(targets$sampleID, targets$ExternalSampleID, targets$Description, as.character(targets$treatment))
+
+sampleNames(rgSet) <- targets$sampleID
+
+```
+
+
+## QC 
+
+Detection P-values. Set to missing. Remove bad samples and probes. 
+
+Small detection p-values = good signals.
+
+Detection P-value > 0.05 = bad signal. Set to missing. 
+
+```{r cache = TRUE}
+detP <- detectionP(rgSet)
+
+barplot(colMeans(detP), las = 2, cex.names = 0.8, ylab = "Mean detection p-values")
+abline(h = 0.05, col = "red")
+
+qcReport(rgSet, sampNames = targets$sampleID, sampGroups = as.character(targets$treatment),
+	 pdf = "minfiQCreport.pdf")
+
+#remove bad samples from rgSet
+keep <- colMeans(detP) < 0.05
+rgSet <- rgSet[,keep]
+rgSet
+
+#remove bad samples from targets
+targets <- targets[keep,]
+
+#remove bad samples from detP matrix
+detP <- detP[, keep]
+```
+
+## Noob normalization
+
+```{r cache = TRUE}
+#must load manifest to perform preprocessNoob
+Mset <- preprocessNoob(rgSet)
+gset <- mapToGenome(Mset)
+grset <- ratioConvert(gset, what = "both")
+beta_n <- getBeta(grset)
+ewas <- data.frame(ID = row.names(beta_n), beta_n)
+names(ewas) <- str_replace_all(names(ewas), pattern = "^X", replacement = "")
+names(ewas)[1] <- "probeID"
+
+
+```
 
 
 # R session 
