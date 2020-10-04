@@ -436,7 +436,7 @@ There are many differences between old and new ATV results. Differences include:
 
 3. Association testing. Old results calculated from t.test. New results calculated from moderated t-tests using limma. Limma should have more power.
 
-Results below show there are many differences. 
+Results below show there are many differences between old results and new Sesame with limma. 
 
 ```{r message = FALSE, cache = TRUE}
 
@@ -554,7 +554,80 @@ datMerge <- datOld %>%
 plot(datMerge$v1_T_STAT, datMerge$T_STAT)
 ```
 
-## Minfi pipeline, data import 
+## Minfi noob normalization and limma
+
+Now that I can replicate my old results, let's see if simply adding limma on top removes all of the significant findings.
+
+```{r cache = TRUE}
+baseDir <- "../data/raw/idatFiles/"
+targets <- read.csv(paste0(baseDir, "SampleSheet.csv"))
+targets$BasenameOriginal <- as.character(targets$Basename)
+targets$Slide <- substr(targets$Basename, 1, 12)
+targets$Basename <- paste0(baseDir, targets$Slide, "/", targets$BasenameOriginal)
+
+rgSet <- read.metharray.exp(base = NULL, targets = targets, recursive = TRUE, force = TRUE)
+
+#must load manifest to perform preprocessNoob
+Mset <- preprocessNoob(rgSet)
+gset <- mapToGenome(Mset)
+grset <- ratioConvert(gset, what = "both")
+bVals <- getBeta(grset)
+
+#Targets and sample IDs in same order
+sum(names(bVals) != targets$BasenameOriginal)
+cbind(names(bVals), targets$BasenameOriginal)
+
+#create new variables in sample sheet to indicate contrasts
+translate_trt <- function(ch){
+  switch(ch,
+	 "Non-senescent DMSO-treated control cells" = "noSen_ATV",
+	 "Non-senescent mtDNA-containing controls no pyruvate" = "noSen_Mt_noPy", 
+	 "Non-senescent mtDNA-containing controls with pyruvate" = "noSen_Mt_Py",
+	 "Non-senescent mtDNA-depleted controls cells with pyruvate" = "noSen_noMt_Py",
+	 "Senescent ATV-treated cells" = "sen_ATV",
+	 "Senescent mtDNA-depleted cells no pyruvate" = "sen_noMt_noPy"
+	 )
+}
+
+targets <- targets %>%
+	mutate(treatment = map_chr(Description, translate_trt)) %>%
+	mutate(treatment = factor(treatment))
+
+design <- model.matrix(~0 + treatment, data = targets)
+design
+colSums(design)
+
+cm <- makeContrasts(ATVvControl = treatmentsen_ATV - treatmentnoSen_ATV,
+		    SenMidasvNoSenMtnoPy = treatmentsen_noMt_noPy - treatmentnoSen_Mt_noPy,
+		    SenMidasvNoSenNoMtPy = treatmentsen_noMt_noPy - treatmentnoSen_noMt_Py,
+		    levels = design
+		    )
+fit <- lmFit(bVals, design)
+fit2 <- contrasts.fit(fit, contrasts = cm)
+fit2 <- eBayes(fit2)
+
+results <- decideTests(fit2)
+summary(results)
+vennDiagram(results)
+
+volcanoplot(fit2, coef = "ATVvControl" , main = "ATV vs control")
+volcanoplot(fit2, coef = "SenMidasvNoSenMtnoPy", main = "MiDAS vs control with MtDNA")
+volcanoplot(fit2, coef = "SenMidasvNoSenNoMtPy", main = "MiDAS vs control without mtDNA")
+
+topTable(fit2, coef = "ATVvControl", p.value = 0.05, confint = TRUE) %>%
+	kable()
+topTable(fit2, coef = "SenMidasvNoSenMtnoPy", p.value = 0.05, confint = TRUE) %>%
+	kable()
+topTable(fit2, coef = "SenMidasvNoSenNoMtPy", p.value = 0.05, confint = TRUE) %>%
+	kable()
+
+
+```
+## Next, add Mvals on top
+
+Limma analysis of beta values still retained significant findings. Now, what about using M-values with basic minfi noob and limma? 
+
+## Minfi preprocessing, QC, noob, and limma for association testing
 
 Minfi noob normalized data with unpaired t-test replicates the old results. 
 
