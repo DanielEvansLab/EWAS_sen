@@ -458,11 +458,17 @@ datOld %>%
 	kable(digits = 9)
 
 datMerge <- datOld %>%
-	left_join(dat, by = "probeID") %>%
+	inner_join(dat, by = "probeID") %>%
 	filter(!is.na(v1_T_STAT)) %>%
 	filter(!is.na(t))
 
-plot(datMerge$v1_T_STAT, datMerge$t)
+datMerge %>%
+	ggplot(aes(x = v1_T_STAT, y = t)) +
+	geom_bin2d() +
+	labs(x = "old results (minfi noob t-test)", 
+	     y = "new results (sesame limma)",
+	     caption = "Old results are from Nate minfi noob data with Dan t-test. New results are from sesame data and limma."
+	     )
 
 ```
 
@@ -476,7 +482,7 @@ This code chunk creates a noob processed dataset from the raw data. Should be th
 
 Output is a matrix of betas. Then, apply unpaired t-test and compare to my previous results. If I can replicate results, then I start adding different layers to see if significant associations can be retained while still performing robust QC.
 
-```{r cache = TRUE}
+```{r cache = TRUE, message = FALSE, warning = FALSE}
 
 baseDir <- "../data/raw/idatFiles/"
 targets <- read.csv(paste0(baseDir, "SampleSheet.csv"))
