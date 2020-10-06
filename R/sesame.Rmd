@@ -453,16 +453,15 @@ names(datOld)[2:4] <- paste("v1", names(datOld)[2:4], sep = "_")
 datOld %>%
 	filter(v1_P_BH <= 0.05) %>%
 	left_join(dat, by = "probeID") %>%
-	select(probeID, v1_T_STAT, v1_P, v1_P_BH, P.Value, adj.P.Val, everything()) %>%
-	arrange(v1_P_BH) %>%
+	select(probeID, v1_T_STAT, v1_P, v1_P_BH, t, P.Value, adj.P.Val, everything()) %>%
+	arrange(v1_P) %>%
+	slice_head(n = 10) %>%
 	kable(digits = 9)
 
-datMerge <- datOld %>%
+datOld %>%
 	inner_join(dat, by = "probeID") %>%
 	filter(!is.na(v1_T_STAT)) %>%
-	filter(!is.na(t))
-
-datMerge %>%
+	filter(!is.na(t)) %>%
 	ggplot(aes(x = v1_T_STAT, y = t)) +
 	geom_bin2d() +
 	labs(x = "old results (minfi noob t-test)", 
@@ -480,7 +479,9 @@ Since the sesame-based results are so different from the noob-normalized minfi r
 
 This code chunk creates a noob processed dataset from the raw data. Should be the same as data from Nate.
 
-Output is a matrix of betas. Then, apply unpaired t-test and compare to my previous results. If I can replicate results, then I start adding different layers to see if significant associations can be retained while still performing robust QC.
+Output is a matrix of betas. Then, apply unpaired t-test and compare to my previous results. Results should replicate, as long as my minfi noob preprocess was the same as Nate's. 
+
+If I can replicate results, then I start adding different layers to see if significant associations can be retained while still performing robust QC.
 
 ```{r cache = TRUE, message = FALSE, warning = FALSE}
 
@@ -549,22 +550,28 @@ names(datOld)[2:4] <- paste("v1", names(datOld)[2:4], sep = "_")
 datOld %>%
 	filter(v1_P_BH <= 0.05) %>%
 	left_join(resultsTB, by = "probeID") %>%
-	arrange(v1_P_BH) %>%
+	arrange(v1_P) %>%
+        slice_head(n = 10) %>%
 	kable(digits = 9)
 
-datMerge <- datOld %>%
-	left_join(resultsTB, by = "probeID") %>%
+datOld %>%
+	inner_join(resultsTB, by = "probeID") %>%
 	filter(!is.na(v1_T_STAT)) %>%
-	filter(!is.na(T_STAT))
+	filter(!is.na(T_STAT)) %>%
+	ggplot(aes(x = v1_T_STAT, y = T_STAT)) +
+	geom_bin2d() +
+	labs(x = "old results (Nate minfi noob t-test)", 
+	     y = "new results (Dan minfi noob t-test)",
+	     caption = "Old results are from Nate minfi noob data with Dan t-test. New results are from Dan minfi noob data with Dan t-test."
+	     )
 
-plot(datMerge$v1_T_STAT, datMerge$T_STAT)
 ```
 
 ## Minfi noob normalization and limma
 
 Now that I can replicate my old results, let's see if simply adding limma on top removes all of the significant findings.
 
-```{r cache = TRUE}
+```{r cache = TRUE, message = FALSE, warning = FALSE}
 baseDir <- "../data/raw/idatFiles/"
 targets <- read.csv(paste0(baseDir, "SampleSheet.csv"))
 targets$BasenameOriginal <- as.character(targets$Basename)
@@ -620,11 +627,11 @@ volcanoplot(fit2, coef = "ATVvControl" , main = "ATV vs control")
 volcanoplot(fit2, coef = "SenMidasvNoSenMtnoPy", main = "MiDAS vs control with MtDNA")
 volcanoplot(fit2, coef = "SenMidasvNoSenNoMtPy", main = "MiDAS vs control without mtDNA")
 
-topTable(fit2, coef = "ATVvControl", p.value = 0.05, confint = TRUE) %>%
+topTable(fit2, coef = "ATVvControl", confint = TRUE) %>%
 	kable()
-topTable(fit2, coef = "SenMidasvNoSenMtnoPy", p.value = 0.05, confint = TRUE) %>%
+topTable(fit2, coef = "SenMidasvNoSenMtnoPy", confint = TRUE) %>%
 	kable()
-topTable(fit2, coef = "SenMidasvNoSenNoMtPy", p.value = 0.05, confint = TRUE) %>%
+topTable(fit2, coef = "SenMidasvNoSenNoMtPy", confint = TRUE) %>%
 	kable()
 
 
