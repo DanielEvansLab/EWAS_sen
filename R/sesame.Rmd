@@ -442,39 +442,46 @@ Results below show there are many differences between old results and new Sesame
 
 comp_results <- function(datOld, dat, fdat){
 
-  datOld %>%
+  res1 <- datOld %>%
 	filter(P_BH <= 0.05) %>%
 	left_join(fdat, by = "probeID") %>%
 	summarize(n_masked = sum(MASK_general), n_not_masked = sum(!MASK_general))
 
   names(datOld)[2:4] <- paste("v1", names(datOld)[2:4], sep = "_")
-  datOld %>%
+  res2 <- datOld %>%
 	filter(v1_P_BH <= 0.05) %>%
 	left_join(dat, by = "probeID") %>%
 	select(probeID, v1_T_STAT, v1_P, v1_P_BH, t, P.Value, adj.P.Val, everything()) %>%
 	arrange(v1_P) %>%
-	slice_head(n = 10) %>%
-	kable(digits = 9)
+	slice_head(n = 10)
 
-  datOld %>%
+  datMerge <- inner_join(datOld, dat, by = "probeID") 
+  cor1 <- cor(datMerge$v1_T_STAT, datMerge$t, use = "complete.obs")
+  if(cor1 < 0.1) cor1 <- 0.1
+
+  res3 <- datOld %>%
 	inner_join(dat, by = "probeID") %>%
 	filter(!is.na(v1_T_STAT)) %>%
 	filter(!is.na(t)) %>%
 	ggplot(aes(x = v1_T_STAT, y = t)) +
-	geom_bin2d(binwidth = c(0.1, 0.1)) +
+	geom_bin2d(binwidth = c(cor1, cor1)) +
 	labs(x = "old results (minfi noob t-test)", 
 	     y = "new results",
 	     caption = "Old results are from Nate minfi noob data with Dan t-test."
 	     )
 
-
+  return(list(res1, res2, res3))
 }
 
 fdat <- read_tsv("~/bigdata/EWAStools/arrayAnnotation/EPIC.hg19.manifest.tsv")
 dat <- read_csv(paste0(dir_out, "ATVvControl.csv"))
 datOld <- read_csv(paste0(dir_out, "probewise_ATV.csv"))
 
-comp_results(datOld, dat, fdat)
+res_list <- comp_results(datOld, dat, fdat)
+
+walk(res_list[1:2], kable, digits = 9)
+print(res_list[3])
+
 
 ```
 
