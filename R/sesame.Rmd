@@ -440,52 +440,9 @@ Results below show there are many differences between old results and new Sesame
 
 ```{r message = FALSE, cache = TRUE}
 
-comp_results <- function(datOld, dat, fdat){
-
-  res1 <- datOld %>%
-	filter(P_BH <= 0.05) %>%
-	left_join(fdat, by = "probeID") %>%
-	summarize(n_masked = sum(MASK_general), n_not_masked = sum(!MASK_general))
-
-  names(datOld)[2:4] <- paste("v1", names(datOld)[2:4], sep = "_")
-  res2 <- datOld %>%
-	filter(v1_P_BH <= 0.05) %>%
-	left_join(dat, by = "probeID") %>%
-	select(probeID, v1_T_STAT, v1_P, v1_P_BH, t, P.Value, adj.P.Val, everything()) %>%
-	arrange(v1_P) %>%
-	slice_head(n = 10)
-
-  datMerge <- inner_join(datOld, dat, by = "probeID") 
-  cor1 <- cor(datMerge$v1_T_STAT, datMerge$t, use = "complete.obs")
-  if(cor1 < 0.1) cor1 <- 0.1
-
-  res3 <- datOld %>%
-	inner_join(dat, by = "probeID") %>%
-	filter(!is.na(v1_T_STAT)) %>%
-	filter(!is.na(t)) %>%
-	ggplot(aes(x = v1_T_STAT, y = t)) +
-	geom_bin2d(binwidth = c(cor1, cor1)) +
-	labs(x = "old results (minfi noob t-test)", 
-	     y = "new results",
-	     caption = "Old results are from Nate minfi noob data with Dan t-test."
-	     )
-
-  return(list(res1, res2, res3))
-}
-
 fdat <- read_tsv("~/bigdata/EWAStools/arrayAnnotation/EPIC.hg19.manifest.tsv")
 dat <- read_csv(paste0(dir_out, "ATVvControl.csv"))
 datOld <- read_csv(paste0(dir_out, "probewise_ATV.csv"))
-
-res_list <- comp_results(datOld, dat, fdat)
-
-walk(res_list[1:2], kable, digits = 9)
-print(res_list[3])
-
-
-```
-
-```{r eval = FALSE}
 
 datOld %>%
 	filter(P_BH <= 0.05) %>%
@@ -498,22 +455,24 @@ datOld %>%
 	left_join(dat, by = "probeID") %>%
 	select(probeID, v1_T_STAT, v1_P, v1_P_BH, t, P.Value, adj.P.Val, everything()) %>%
 	arrange(v1_P) %>%
-	slice_head(n = 10) %>%
-	kable(digits = 9)
+	slice_head(n = 10)
+
+datMerge <- inner_join(datOld, dat, by = "probeID") 
+cor1 <- cor(datMerge$v1_T_STAT, datMerge$t, use = "complete.obs")
+if(cor1 < 0.1) cor1 <- 0.1
 
 datOld %>%
 	inner_join(dat, by = "probeID") %>%
 	filter(!is.na(v1_T_STAT)) %>%
 	filter(!is.na(t)) %>%
 	ggplot(aes(x = v1_T_STAT, y = t)) +
-	geom_bin2d(binwidth = c(0.1, 0.1)) +
+	geom_bin2d(binwidth = c(cor1, cor1)) +
 	labs(x = "old results (minfi noob t-test)", 
-	     y = "new results (sesame limma)",
-	     caption = "Old results are from Nate minfi noob data with Dan t-test. New results are from sesame data and limma."
+	     y = "new results",
+	     caption = "Old results are from Nate minfi noob data with Dan t-test."
 	     )
 
 ```
-
 # Minfi processing
 
 Since the sesame-based results are so different from the noob-normalized minfi results, let me try minfi noob myself, with some additional QC steps. Besides, the minfi noob results had many significant associations. 
@@ -523,6 +482,11 @@ Since the sesame-based results are so different from the noob-normalized minfi r
 This code chunk creates a noob processed dataset from the raw data. Should be the same as data from Nate.
 
 Output is a matrix of betas. Then, apply unpaired t-test and compare to my previous results. Results should replicate, as long as my minfi noob preprocess was the same as Nate's. 
+
+Summary methods:
+Minfi noob
+Beta values
+Unpaired t-test
 
 If I can replicate results, then I start adding different layers to see if significant associations can be retained while still performing robust QC.
 
@@ -602,7 +566,7 @@ datOld %>%
 	filter(!is.na(v1_T_STAT)) %>%
 	filter(!is.na(T_STAT)) %>%
 	ggplot(aes(x = v1_T_STAT, y = T_STAT)) +
-	geom_bin2d(binwidth = c(0.1, 0.1)) +
+	geom_bin2d(binwidth = c(0.8, 0.8)) +
 	labs(x = "old results (Nate minfi noob t-test)", 
 	     y = "new results (Dan minfi noob t-test)",
 	     caption = "Old results are from Nate minfi noob data with Dan t-test. New results are from Dan minfi noob data with Dan t-test."
@@ -613,6 +577,12 @@ datOld %>%
 ## Minfi noob normalization and limma
 
 Now that I can replicate my old results, let's see if simply adding limma on top removes all of the significant findings.
+
+Summary methods:
+Minfi noob
+Beta values
+Limma
+
 
 ```{r cache = TRUE, message = FALSE, warning = FALSE}
 baseDir <- "../data/raw/idatFiles/"
@@ -670,6 +640,9 @@ volcanoplot(fit2, coef = "ATVvControl" , main = "ATV vs control")
 volcanoplot(fit2, coef = "SenMidasvNoSenMtnoPy", main = "MiDAS vs control with MtDNA")
 volcanoplot(fit2, coef = "SenMidasvNoSenNoMtPy", main = "MiDAS vs control without mtDNA")
 
+dat <- topTable(fit2, coef = "ATVvControl", n = Inf)
+dat <- dat %>%
+	mutate(probeID = row.names(dat))
 topTable(fit2, coef = "ATVvControl", confint = TRUE) %>%
 	kable()
 topTable(fit2, coef = "SenMidasvNoSenMtnoPy", confint = TRUE) %>%
@@ -677,6 +650,30 @@ topTable(fit2, coef = "SenMidasvNoSenMtnoPy", confint = TRUE) %>%
 topTable(fit2, coef = "SenMidasvNoSenNoMtPy", confint = TRUE) %>%
 	kable()
 
+#Compare old and new ATV results
+datOld <- read_csv(paste0(dir_out, "probewise_ATV.csv"))
+names(datOld)[2:4] <- paste("v1", names(datOld)[2:4], sep = "_")
+datOld %>%
+	filter(v1_P_BH <= 0.05) %>%
+	left_join(dat, by = "probeID") %>%
+	select(probeID, v1_T_STAT, v1_P, v1_P_BH, t, P.Value, adj.P.Val, everything()) %>%
+	arrange(v1_P) %>%
+	slice_head(n = 10)
+
+datMerge <- inner_join(datOld, dat, by = "probeID") 
+cor1 <- cor(datMerge$v1_T_STAT, datMerge$t, use = "complete.obs")
+if(cor1 < 0.1) cor1 <- 0.1
+
+datOld %>%
+	inner_join(dat, by = "probeID") %>%
+	filter(!is.na(v1_T_STAT)) %>%
+	filter(!is.na(t)) %>%
+	ggplot(aes(x = v1_T_STAT, y = t)) +
+	geom_bin2d(binwidth = c(cor1, cor1)) +
+	labs(x = "old results (minfi noob t-test)", 
+	     y = "new results (minfi noob, beta values, limma)",
+	     caption = "Old results are from Nate minfi noob data with Dan t-test. New results are from minfi noob generating beta values that are analyzed with limma"
+	     )
 
 ```
 ## Next, add Mvals on top
