@@ -72,6 +72,7 @@ This includes libraries for Sesame and Minfi.
 
 ```{r message = FALSE}
 library(tidyverse)
+library(readxl)
 library(knitr)
 library(sesame)
 library(wheatmap)
@@ -574,7 +575,7 @@ datOld %>%
 
 ```
 
-## Minfi noob normalization and limma
+# Minfi noob normalization and limma
 
 Now that I can replicate my old results, let's see if simply adding limma on top removes all of the significant findings.
 
@@ -676,19 +677,26 @@ datOld %>%
 	     )
 
 ```
-## Next, add Mvals on top
 
-Limma analysis of beta values still retained significant findings. Now, what about using M-values with basic minfi noob and limma? 
+# Minfi QC, noob, Mvals and limma for association testing
 
-## Minfi preprocessing, QC, noob, and limma for association testing
+Minfi noob normalized data with unpaired t-test replicates the old results. However, adding limma made the results totally different. What do we trust? Limma is more trustworthy, especially for small sample sizes. The test-statistics for the vanilla t-tests were way too high (39!) to be believed, which is most likely due to unstable variance estimates. Limma takes care of this, so we should move forward with limma. 
 
-Minfi noob normalized data with unpaired t-test replicates the old results. 
+Limma analysis of beta values still retained significant findings for ATV contrast. Now, what about using M-values with basic minfi noob and limma? 
 
-Now, continue with minfi processing with additional QC followed by limma to see how results look.
+So, this will be the official analysis using minfi processing with additional QC, using Mvalues and limma for association testing.
 
 Create an RGChannelSet object. 
 
-```{r cache=TRUE}
+Detection P-values. Set to missing. Remove bad samples and probes. 
+
+Small detection p-values = good signals.
+
+Detection P-value > 0.05 = bad signal. Set to missing. 
+
+## Minfi data import 
+
+```{r cache=TRUE, warning = FALSE, message = FALSE}
 baseDir <- "../data/raw/idatFiles/"
 targets <- read.csv(paste0(baseDir, "SampleSheet.csv"))
 targets$BasenameOriginal <- as.character(targets$Basename)
@@ -721,21 +729,22 @@ targets <- targets %>%
 	mutate(treatment = factor(treatment))
 
 cbind(targets$sampleID, targets$ExternalSampleID, targets$Description, as.character(targets$treatment))
+cbind(targets$sampleID, targets$ExternalSampleID, as.character(targets$treatment))
 
 sampleNames(rgSet) <- targets$sampleID
 
 ```
 
+## Minfi normalization and QC filtering
 
-## QC 
+Set probes to missing if detP > 0.05.
 
-Detection P-values. Set to missing. Remove bad samples and probes. 
+Remove probes that are bad quality (SNP overlap, cross-reactive, design problems).
 
-Small detection p-values = good signals.
-
-Detection P-value > 0.05 = bad signal. Set to missing. 
 
 ```{r cache = TRUE}
+#Probe and sample filtering
+
 detP <- detectionP(rgSet)
 
 barplot(colMeans(detP), las = 2, cex.names = 0.8, ylab = "Mean detection p-values")
@@ -746,6 +755,7 @@ qcReport(rgSet, sampNames = targets$sampleID, sampGroups = as.character(targets$
 
 #remove bad samples from rgSet
 keep <- colMeans(detP) < 0.05
+keep
 rgSet <- rgSet[,keep]
 rgSet
 
@@ -754,22 +764,95 @@ targets <- targets[keep,]
 
 #remove bad samples from detP matrix
 detP <- detP[, keep]
+
+#Normalization
+#must load manifest to perform preprocessNoob
+mSet <- preprocessNoob(rgSet)
+gset <- mapToGenome(mSet)
+grSet <- ratioConvert(gset, what = "both")
+
+#After normalization, can exclude probes
+# Probe exclusion based on design problems
+xreact_450 <- read_xlsx("~/bigdata/EWAStools/arrayAnnotation/48639-non-specific-probes-Illumina450k.xlsx", sheet = "nonspecific cg probes")
+annot_EPIC <- read_tsv("~/bigdata/EWAStools/arrayAnnotation/EPIC.hg19.manifest.tsv")
+table(annot_EPIC$MASK_general[annot_EPIC$probeID %in% xreact_450$TargetID])
+annot_EPIC$MASK_general[annot_EPIC$probeID %in% xreact_450$TargetID] <- TRUE
+arrayProbes <- featureNames(grSet)
+annot_EPIC <- annot_EPIC[match(arrayProbes, annot_EPIC$probeID), ]
+sum(arrayProbes != annot_EPIC$probeID)
+grSet <- grSet[!annot_EPIC$MASK_general,]
+dim(grSet)
+
+#Probe exclusion based on detP
+arrayProbes <- featureNames(grSet)
+detP <- detP[match(arrayProbes, rownames(detP)), ]
+# remove probes that failed in one or more samples
+keep <- rowSums(detP < 0.05) == ncol(grSet)
+table(keep)
+grSet <- grSet[keep,]
+
+# Data exploration with PCA and boxplots
+Mvals <- getM(grSet)
+group <- targets$treatment
+col.group <- group
+levels(col.group) <- brewer.pal(nlevels(col.group), "Set3")
+col.group.ch <- as.character(col.group)
+plotMDS(Mvals, gene.selection = "common", col = col.group, pch = 16)
+legend("topleft", fill = levels(col.group), legend = levels(group))
+
+boxplot(Mvals, las = 2, ylab = "M-values")
+
+
 ```
 
-## Noob normalization
+
+## Mvals for association analysis
+
+Using limma with Mvals
 
 ```{r cache = TRUE}
-#must load manifest to perform preprocessNoob
-Mset <- preprocessNoob(rgSet)
-gset <- mapToGenome(Mset)
-grset <- ratioConvert(gset, what = "both")
-beta_n <- getBeta(grset)
-ewas <- data.frame(ID = row.names(beta_n), beta_n)
-names(ewas) <- str_replace_all(names(ewas), pattern = "^X", replacement = "")
-names(ewas)[1] <- "probeID"
+
+#Targets and sample IDs in same order
+sum(colnames(Mvals) != targets$sampleID)
+cbind(colnames(Mvals), targets$sampleID)
+
+design <- model.matrix(~0 + treatment, data = targets)
+design
+colSums(design)
+
+cm <- makeContrasts(ATVvControl = treatmentsen_ATV - treatmentnoSen_ATV,
+		    SenMidasvNoSenMtnoPy = treatmentsen_noMt_noPy - treatmentnoSen_Mt_noPy,
+		    SenMidasvNoSenNoMtPy = treatmentsen_noMt_noPy - treatmentnoSen_noMt_Py,
+		    levels = design
+		    )
+fit <- lmFit(Mvals, design)
+fit2 <- contrasts.fit(fit, contrasts = cm)
+fit2 <- eBayes(fit2)
+
+results <- decideTests(fit2)
+summary(results)
+vennDiagram(results)
+
+volcanoplot(fit2, coef = "ATVvControl" , main = "ATV vs control")
+volcanoplot(fit2, coef = "SenMidasvNoSenMtnoPy", main = "MiDAS vs control with MtDNA")
+volcanoplot(fit2, coef = "SenMidasvNoSenNoMtPy", main = "MiDAS vs control without mtDNA")
+
+topTable(fit2, coef = "ATVvControl", confint = TRUE) %>%
+	kable()
+topTable(fit2, coef = "SenMidasvNoSenMtnoPy", confint = TRUE) %>%
+	kable()
+topTable(fit2, coef = "SenMidasvNoSenNoMtPy", confint = TRUE) %>%
+	kable()
+
+resultAll <- topTable(fit2, coef = "ATVvControl", confint = TRUE, sort.by = "none", number = Inf)
+
+write_csv(resultAll, path = "../results/limma_ATV.csv")
+
 
 
 ```
+
+
 
 
 # R session 
