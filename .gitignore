@@ -4,3 +4,4 @@ R/out
 python/.ipynb_checkpoints/
 R/*_cache
 R/*_files
+R/R_plots.pdf
