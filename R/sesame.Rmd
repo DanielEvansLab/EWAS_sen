@@ -327,7 +327,7 @@ plotDensities(eset_Mvals_sub, main = "M values MiDAS controls no MT Py", legend 
 plot_MDS <- function(mylabel, myeset){
 	group <- pData(myeset)[[mylabel]]
 	col.group <- group
-	levels(col.group) <- brewer.pal(nlevels(col.group), "Set1")
+	levels(col.group) <- brewer.pal(nlevels(col.group), "Dark2")
 	col.group.ch <- as.character(col.group)
 	plotMDS(myeset, col = col.group.ch, gene.selection = "common", main = paste(mylabel, "labels"), pch = 16)
 	legend("topleft", fill = levels(col.group), legend = levels(group))
@@ -795,10 +795,13 @@ grSet <- grSet[keep,]
 Mvals <- getM(grSet)
 group <- targets$treatment
 col.group <- group
-levels(col.group) <- brewer.pal(nlevels(col.group), "Set3")
+levels(col.group) <- brewer.pal(nlevels(col.group), "Dark2")
 col.group.ch <- as.character(col.group)
-plotMDS(Mvals, gene.selection = "common", col = col.group, pch = 16)
+plotMDS(Mvals, gene.selection = "common", col = col.group.ch, pch = 16)
 legend("topleft", fill = levels(col.group), legend = levels(group))
+
+cbind(levels(group), levels(col.group))
+cbind(as.character(group), col.group.ch)
 
 boxplot(Mvals, las = 2, ylab = "M-values")
 
