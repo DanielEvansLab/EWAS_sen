@@ -124,6 +124,9 @@ Mvals <- BetaValueToMValue(betas)
 
 #column names for betas and Mvals is currently the Basename. Rename it to sampleID to make it easier to understand.
 sampsheet <- read_csv("../data/raw/idatFiles/SampleSheet.csv")
+#Are there true discrepancies between ExternalSampleID, SampleLabel, and Description?
+#row 2 ExternalSampleID shows "+P" but SampleLabel shows "-P" and Description shows "no pyruvate". Many discrepancies like that. I ended up trusting SampleLabel and Description, but is that wrong? 
+cbind(sampsheet$ExternalSampleID, sampsheet$SampleLabel, sampsheet$Description)
 sum(colnames(betas) != sampsheet$Basename) #not in same order
 cbind(colnames(betas),sampsheet$Basename) #visually show not in same order
 cbind(colnames(betas),sampsheet$Basename[match(sampsheet$Basename, colnames(betas))])#now in correct order
@@ -201,7 +204,7 @@ cbind(names(ssets), pdat$Basename)
 qc10 <- qc10 %>%
 	mutate(sample_name = pdat$SampleLabel) %>%
 	mutate(sample_desc = pdat$Description) %>%
-	select(sample_name, sample_desc, everything())
+	dplyr::select(sample_name, sample_desc, everything())
 
 #frac_na_cg = percentage of cg probes with NA
 #mean_intensity = for type II probes. Low intensity typically bad quality
@@ -211,7 +214,7 @@ qc10 <- qc10 %>%
 #GCT = residual incomplete bisulfite conversion. Closer to one = more complete conversion.
 qcvars <- c("sample_name", "sample_desc", "num_probes_cg", "num_na_cg", "frac_na_cg", "mean_intensity", "mean_beta_cg", "frac_meth_cg", "frac_unmeth_cg", "sex", "age", "ethnicity", "GCT")
 qc10 %>%
-	select(any_of(qcvars)) %>%
+	dplyr::select(any_of(qcvars)) %>%
 	kable
 
 ```
@@ -277,7 +280,7 @@ Summary of sample IDs and descriptions
 ```{r cache = TRUE}
 p1 <- pData(eset_Mvals_clean)
 p1 %>%
-	select(sampleID, Description) %>%
+	dplyr::select(sampleID, Description) %>%
 	kable()
 ```
 
@@ -289,7 +292,7 @@ abline(h = median(exprs(eset_Mvals_clean)), col = "blue")
 
 ```
 
-### All samples combined
+### Density plot All samples combined
 
 ```{r cache = TRUE}
 plotDensities(eset_betas_clean, main = "Betas", legend = FALSE)
@@ -298,12 +301,12 @@ plotDensities(eset_Mvals_clean, main = "M values", legend = FALSE)
 
 ```
 
-### Split-up samples
+### Density plot sample groups
 
 ```{r cache = TRUE}
 p1 <- pData(eset_Mvals_clean)
 p1 %>%
-	select(sampleID, SampleLabel, Description, treatment) %>%
+	dplyr::select(sampleID, SampleLabel, Description, treatment) %>%
 	kable()
 
 eset_Mvals_sub <- eset_Mvals_clean[,which(p1$treatment == "senATV" | p1$treatment == "noSen_ATV")]
@@ -339,6 +342,70 @@ plot_MDS(mylabel = "treatment", myeset = eset_Mvals_clean)
 
 ```
 
+## PCA ATV samples
+```{r cache = TRUE}
+plot_MDS <- function(mylabel, myeset){
+	group <- pData(myeset)[[mylabel]]
+	col.group <- group
+	levels(col.group) <- brewer.pal(nlevels(col.group), "Dark2")
+	col.group.ch <- as.character(col.group)
+	plotMDS(myeset, col = col.group.ch, gene.selection = "common", main = paste(mylabel, "labels"), pch = 16)
+	legend("topleft", fill = levels(col.group), legend = levels(group))
+}
+
+keep <- str_detect(pData(eset_Mvals_clean)$sampleID, "ATV")
+eset_sub <- eset_Mvals_clean[, keep]
+plot_MDS(mylabel = "treatment", myeset = eset_sub)
+
+
+```
+
+## Identify PCA outliers
+
+```{r cache = TRUE}
+myMDS <- plotMDS(eset_Mvals_clean, gene.selection = "common", plot = FALSE)
+cluster_top <- myMDS$y[myMDS$y > 0.2 ]
+cluster_bottom <- myMDS$x[myMDS$x > 1 ]
+cluster_ATV <- myMDS$x[myMDS$x < (-2) ]
+
+#cluster top
+pData(eset_Mvals_clean) %>%
+	filter(sampleID %in% names(cluster_top)) %>%
+	dplyr::select(sampleID, SampleLabel, treatment, Description) %>%
+	kable
+
+#cluster bottom
+pData(eset_Mvals_clean) %>%
+	filter(sampleID %in% names(cluster_bottom)) %>%
+	dplyr::select(sampleID, SampleLabel, treatment, Description) %>%
+	kable
+
+#cluster ATV
+pData(eset_Mvals_clean) %>%
+	filter(sampleID %in% names(cluster_ATV)) %>%
+	dplyr::select(sampleID, SampleLabel, treatment, Description) %>%
+	kable
+```
+
+## Density plots of PCA clusters
+
+```{r cache = TRUE}
+plotDensities(eset_Mvals_clean, main = "M values all samples", legend = FALSE)
+
+p1 <- pData(eset_Mvals_clean)
+p1 %>%
+	dplyr::select(sampleID, SampleLabel, Description, treatment) %>%
+	kable()
+eset_Mvals_sub <- eset_Mvals_clean[, p1$sampleID %in% names(cluster_top)]
+plotDensities(eset_Mvals_sub, main = "M values cluster top", legend = TRUE)
+
+eset_Mvals_sub <- eset_Mvals_clean[, p1$sampleID %in% names(cluster_bottom)]
+plotDensities(eset_Mvals_sub, main = "M values cluster bottom", legend = TRUE)
+
+eset_Mvals_sub <- eset_Mvals_clean[, p1$sampleID %in% names(cluster_ATV)]
+plotDensities(eset_Mvals_sub, main = "M values cluster ATV", legend = TRUE)
+
+```
 
 ## Probe-wise analysis of senescence treatment
 
@@ -379,6 +446,7 @@ adj.P.value = BH 1995 adjusted P-value
 B = log-odds that the variable is differentially abundant. 
 
 From the limma user guide: Suppose for example that B = 1.5. The odds of differential expression is exp(1.5)=4.48, i.e, about four and a half to one. The probability that the gene is differentially expressed is 4.48/(1+4.48)=0.82, i.e., the probability is about 82% that this gene is differentially expressed. A B-statistic of zero corresponds to a 50-50 chance that the gene is differentially expressed. The B-statistic is automatically adjusted for multiple testing by assuming that 1% of the genes are expected to be differentially expressed. The p-values and B-statistics will normally rank genes in the same order. 
+
 
 
 ```{r, cache = TRUE}
@@ -467,7 +535,7 @@ datOld %>%
 	filter(!is.na(v1_T_STAT)) %>%
 	filter(!is.na(t)) %>%
 	ggplot(aes(x = v1_T_STAT, y = t)) +
-	geom_bin2d(binwidth = c(cor1, cor1)) +
+	geom_hex(binwidth = c(cor1, cor1)) +
 	labs(x = "old results (minfi noob t-test)", 
 	     y = "new results",
 	     caption = "Old results are from Nate minfi noob data with Dan t-test."
@@ -521,7 +589,7 @@ samp$ATV[str_detect(samp$ExternalSampleID, ".*ATV.*", negate = TRUE)] <- NA
 cbind(samp$ATV, samp$ExternalSampleID)
 
 betaMat <- ewas %>%
-	select(-probeID) %>%
+	dplyr::select(-probeID) %>%
 	as.matrix
 
 # Association testing
@@ -543,7 +611,7 @@ colnames(results) <- c("T_STAT", "P")
 resultsTB <- as_tibble(results)
 resultsTB <- resultsTB %>%
 	mutate(probeID = row.names(results)) %>%
-	select(probeID, everything())
+	dplyr::select(probeID, everything())
 adjp1 <- mt.rawp2adjp(resultsTB[["P"]], proc = "BH")
 resultsTB <- resultsTB %>%
 	mutate(P_BH = adjp1$adjp[order(adjp1$index), "BH"])
@@ -657,7 +725,7 @@ names(datOld)[2:4] <- paste("v1", names(datOld)[2:4], sep = "_")
 datOld %>%
 	filter(v1_P_BH <= 0.05) %>%
 	left_join(dat, by = "probeID") %>%
-	select(probeID, v1_T_STAT, v1_P, v1_P_BH, t, P.Value, adj.P.Val, everything()) %>%
+	dplyr::select(probeID, v1_T_STAT, v1_P, v1_P_BH, t, P.Value, adj.P.Val, everything()) %>%
 	arrange(v1_P) %>%
 	slice_head(n = 10)
 
@@ -670,7 +738,7 @@ datOld %>%
 	filter(!is.na(v1_T_STAT)) %>%
 	filter(!is.na(t)) %>%
 	ggplot(aes(x = v1_T_STAT, y = t)) +
-	geom_bin2d(binwidth = c(cor1, cor1)) +
+	geom_hex(binwidth = c(cor1, cor1)) +
 	labs(x = "old results (minfi noob t-test)", 
 	     y = "new results (minfi noob, beta values, limma)",
 	     caption = "Old results are from Nate minfi noob data with Dan t-test. New results are from minfi noob generating beta values that are analyzed with limma"
@@ -751,7 +819,7 @@ barplot(colMeans(detP), las = 2, cex.names = 0.8, ylab = "Mean detection p-value
 abline(h = 0.05, col = "red")
 
 qcReport(rgSet, sampNames = targets$sampleID, sampGroups = as.character(targets$treatment),
-	 pdf = "minfiQCreport.pdf")
+	 pdf = "minfiQCreport_v2.pdf")
 
 #remove bad samples from rgSet
 keep <- colMeans(detP) < 0.05
@@ -793,6 +861,8 @@ grSet <- grSet[keep,]
 
 # Data exploration with PCA and boxplots
 Mvals <- getM(grSet)
+boxplot(Mvals, las = 2, ylab = "M-values")
+
 group <- targets$treatment
 col.group <- group
 levels(col.group) <- brewer.pal(nlevels(col.group), "Dark2")
@@ -801,10 +871,31 @@ plotMDS(Mvals, gene.selection = "common", col = col.group.ch, pch = 16)
 legend("topleft", fill = levels(col.group), legend = levels(group))
 
 cbind(levels(group), levels(col.group))
-cbind(as.character(group), col.group.ch)
+cbind(colnames(Mvals), as.character(group), col.group.ch)
 
-boxplot(Mvals, las = 2, ylab = "M-values")
+## Identify PCA outliers
+myMDS <- plotMDS(Mvals, gene.selection = "common", plot = FALSE)
+cluster_top <- myMDS$y[myMDS$y > 0.2 ]
+cluster_bottom <- myMDS$x[myMDS$x < (-1) ]
+cluster_ATV <- myMDS$x[myMDS$x > 2 ]
 
+#cluster top
+targets %>%
+	filter(sampleID %in% names(cluster_top)) %>%
+	dplyr::select(sampleID, SampleLabel, treatment, Description) %>%
+	kable
+
+#cluster bottom
+targets %>%
+	filter(sampleID %in% names(cluster_bottom)) %>%
+	dplyr::select(sampleID, SampleLabel, treatment, Description) %>%
+	kable
+
+#cluster ATV
+targets %>%
+	filter(sampleID %in% names(cluster_ATV)) %>%
+	dplyr::select(sampleID, SampleLabel, treatment, Description) %>%
+	kable
 
 ```
 
