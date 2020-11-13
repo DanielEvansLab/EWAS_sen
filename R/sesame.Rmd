@@ -347,10 +347,10 @@ plot_MDS(mylabel = "treatment", myeset = eset_Mvals_clean)
 plot_MDS <- function(mylabel, myeset){
 	group <- pData(myeset)[[mylabel]]
 	col.group <- group
-	levels(col.group) <- brewer.pal(nlevels(col.group), "Dark2")
+	levels(col.group) <- brewer.pal(nlevels(col.group), "Set1")
 	col.group.ch <- as.character(col.group)
 	plotMDS(myeset, col = col.group.ch, gene.selection = "common", main = paste(mylabel, "labels"), pch = 16)
-	legend("topleft", fill = levels(col.group), legend = levels(group))
+	legend("top", fill = levels(col.group), legend = levels(group))
 }
 
 keep <- str_detect(pData(eset_Mvals_clean)$sampleID, "ATV")
