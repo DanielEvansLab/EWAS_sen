@@ -341,7 +341,7 @@ length(miss_probe)
 sum(miss_probe == 0)
 eset_sub <- eset_sub[miss_probe == 0,]
 eset_pca <- prcomp(t(exprs(eset_sub)), center = TRUE, scale = TRUE)
-#summary(eset_pca)
+summary(eset_pca)
 autoplot(eset_pca, data = pData(eset_sub), color = "Description", shape = FALSE)
 eset_PC <- eset_pca[["x"]]
 
@@ -420,7 +420,7 @@ topTable(fit2, coef = "ATVvControl", genelist = fit2$genes[,annot_cols], p.value
 
 #save results 
 resultAll <- topTable(fit2, coef = "ATVvControl", sort.by = "none", number = nrow(fit2), confint = TRUE)
-write_csv(resultAll, path = paste0(dir_out, "ATVvControl.csv"))
+write_csv(resultAll, file = paste0(dir_out, "ATVvControl.csv"))
 
 
 ```
