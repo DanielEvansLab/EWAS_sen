@@ -396,8 +396,13 @@ eset_sub <- eset_Mvals_clean[, keep]
 my_pData <- pData(eset_sub)
 my_pData$PC1 <- eset_PC[,1]
 my_pData$PC2 <- eset_PC[,2]
+my_pData$PC3 <- eset_PC[,3]
+my_pData$PC4 <- eset_PC[,4]
+my_pData$PC5 <- eset_PC[,5]
+my_pData$PC6 <- eset_PC[,6]
+my_pData$PC7 <- eset_PC[,7]
 
-design <- model.matrix(~0 + treatment + PC1 + PC2, data = my_pData)
+design <- model.matrix(~0 + treatment + PC1 + PC2 + PC3 + PC4, data = my_pData)
 design
 colSums(design)
 
