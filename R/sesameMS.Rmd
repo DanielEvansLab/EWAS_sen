@@ -1,0 +1,433 @@
+---
+title: "EWAS senescence"
+author: "Dan Evans"
+output: 
+  BiocStyle::html_document:
+    toc_float: true
+    toc_depth: 3
+    fig_caption: yes
+
+fontsize: 14 pt
+
+vignette: >
+  %\VignetteIndexEntry{EWAS senescence}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+
+---
+
+# EWAS introduction
+
+DNA methylation quantity is expressed as $\beta$ 
+
+$$ \beta = M/(M + U)  $$
+
+Where M = hybridization signal from a methylated version of a cytosine nucleotide and 
+U =  hybridization signal from an unmethylated version of a cytosine nucleotide. Beta can be interpreted as the proportion of methylation signal for a probe, and values range from 0 to 1. Beta is easy to interpret for humans, but typically has a bimodal distribution that is suboptimal for statistical modeling. Thus, we analyze M-values, which are another way to express methylation values for probes. 
+
+$$ M-value = log_2(M/U) $$
+
+EPIC array has type 1 and type 2 probes. Type 1 probes are from the old 27K array that uses 2 bead types per CpG. The type I probes are labeled I-green and I-red. The newer type 2 probes uses one bead type. Most of the EPIC array probes are type II.  
+
+A detection probability represents the probability of a detected signal being background flourescence. If the probability is high, the signal is more likely to be background, and the value should be set to missing.
+
+Standard workflows suggest to remove data points with detection P-value > 0.05.  
+
+# Sesame package processing of Illumina EPIC array
+
+## Sesame package intro
+
+- EWAS array Illumina EPIC 850 
+
+- Sesame is a [bioconductor package](https://www.bioconductor.org/packages/release/bioc/html/sesame.html)
+  + Improvements on previous EWAS packages for low-level processing. 
+  + Existing methods do not identify artifacts associated with detection failure. Sources of failure include: insufficient DNA due to germline or somatic deletions or hyperpolymorphism, probe cross-hybridization. 
+  + Probes are masked (set to NA) with two methods: P-value with out-of-band array hybridization (pOOBAH) so that probes with detection p-value > 0.05 are masked. Probes with design issues such as overlapping SNPs are masked. Minfi uses negative control probes for background, but there are only 411 of them on the EPIC array. Sesame pOOBAH uses out-of-band (OOB) signals from type I probes in addition to negative control probes to improve background subtraction and detection calling. Minfi adopted pOOBAH, but false positive rate higher than Sesame's implementation (Fig 2 Zhou 2018, NAR).  
+  + Non-linear dye bias correction. Minfi uses linear scaling. Sesame uses nonlinear scaling to better fit dye bias. 
+
+```{r, setup}
+knitr::opts_chunk$set(cache.lazy = FALSE)
+```
+
+## Sesame installation on UCR cluster
+
+Installation of sesame and dependencies went fine, no errors or warnings.
+
+```{r, eval = FALSE}
+if (!requireNamespace("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
+
+BiocManager::install("sesame", lib = "~/Rlibs")
+```
+
+Installed sesameData as a dependency. 
+
+Can check version of loaded packages with sessionInfo()
+
+Sesame version 1.6 used.
+
+## Load libraries
+
+This includes libraries for Sesame and Minfi.
+
+```{r message = FALSE}
+library(tidyverse)
+library(readxl)
+library(knitr)
+library(sesame)
+library(wheatmap)
+library(multtest)
+library(limma)
+library(RColorBrewer)
+library(missMethyl)
+#library(IlluminaHumanMethylationEPICmanifest)
+#library(IlluminaHumanMethylationEPICanno.ilm10b4.hg19)
+```
+
+Set global variables.
+
+```{r}
+
+dir_out <- "../results/"
+
+
+```
+
+## Mask and normalize data and create eset
+
+Sesame pipeline involves probe masking with pOOBAH, normalization with noob, and nonlinear dye bias correction.
+
+Noob = background subtraction based on normal-exponential deconvolution using out-of-band probes.
+
+The pipeline can be thought of as adding pOOBAH to noob. Then also the non-linear dye bias correction should be better than minfi's linear correction. 
+
+OpenSesame takes 12 minutes, so run it once and save the output.
+
+```{r, cache = TRUE, message = FALSE, warning = FALSE}
+
+IDATprefixes <- searchIDATprefixes(dir.name = "../data/raw/idatFiles/")
+t1 <- Sys.time()
+betas <- openSesame(IDATprefixes)
+Sys.time() - t1
+#Warnings issued. These are also shown in minfi vignette, so they are expected. 
+#50: In readChar(con, nchars = n) : truncating string with embedded nuls
+
+#Convert Betas to Mvalues. Check if there are beta values that will result in infinite results.
+sum(is.na(betas))
+sum(is.na(betas))/length(betas)
+sum(betas==0 & !is.na(betas))
+sum(betas==1 & !is.na(betas))
+sum(betas<0 & !is.na(betas))
+sum(betas>1 & !is.na(betas))
+
+Mvals <- BetaValueToMValue(betas)
+
+#column names for betas and Mvals is currently the Basename. Rename it to sampleID to make it easier to understand.
+sampsheet <- read_csv("../data/raw/idatFiles/SampleSheet.csv")
+#Are there true discrepancies between ExternalSampleID, SampleLabel, and Description?
+#row 2 ExternalSampleID shows "+P" but SampleLabel shows "-P" and Description shows "no pyruvate". Many discrepancies like that. I ended up trusting SampleLabel and Description, but is that wrong? 
+cbind(sampsheet$ExternalSampleID, sampsheet$SampleLabel, sampsheet$Description)
+sum(colnames(betas) != sampsheet$Basename) #not in same order
+cbind(colnames(betas),sampsheet$Basename) #visually show not in same order
+cbind(colnames(betas),sampsheet$Basename[match(sampsheet$Basename, colnames(betas))])#now in correct order
+#reorder sampsheet to match sample order in data matrix
+sampsheet <- sampsheet[match(sampsheet$Basename, colnames(betas)),]
+sampsheet <- dplyr::rename(sampsheet, sampleID = ExternalSampleID)
+cbind(sampsheet$sampleID, sampsheet$SampleLabel, sampsheet$Description)
+sampsheet$sampleID[1:8] <- paste0("ATV", 1:8)
+sampsheet$sampleID[9:32] <- paste0("midas", 1:24) 
+cbind(sampsheet$sampleID, sampsheet$SampleLabel, sampsheet$Description)
+
+translate_trt <- function(ch){
+  switch(ch,
+	 "Non-senescent DMSO-treated control cells" = "noSen_ATV",
+	 "Non-senescent mtDNA-containing controls no pyruvate" = "noSen_Mt_noPy", 
+	 "Non-senescent mtDNA-containing controls with pyruvate" = "noSen_Mt_Py",
+	 "Non-senescent mtDNA-depleted controls cells with pyruvate" = "noSen_noMt_Py",
+	 "Senescent ATV-treated cells" = "sen_ATV",
+	 "Senescent mtDNA-depleted cells no pyruvate" = "sen_noMt_noPy"
+	 )
+}
+
+sampsheet <- sampsheet %>%
+	mutate(treatment = map_chr(Description, translate_trt)) %>%
+	mutate(treatment = factor(treatment))
+
+cbind(sampsheet$sampleID, sampsheet$SampleLabel, sampsheet$Description, as.character(sampsheet$treatment))
+
+colnames(betas) <- sampsheet$sampleID
+colnames(Mvals) <- sampsheet$sampleID 
+row.names(sampsheet) <- sampsheet$sampleID
+
+#Probe annotation
+dat_fData <- read_tsv("~/bigdata/EWAStools/arrayAnnotation/EPIC.hg19.manifest.tsv")
+length(rownames(betas)) == length(dat_fData$probeID)
+sum(rownames(betas) != dat_fData$probeID)
+#Reorder annotation to match betas
+dat_fData <- dat_fData[match(rownames(betas), dat_fData$probeID),]
+sum(rownames(betas) != dat_fData$probeID)
+head(dat_fData$probeID)
+head(rownames(betas))
+row.names(dat_fData) <- dat_fData$probeID
+
+eset_betas <- ExpressionSet(assayData = betas,
+			    phenoData = AnnotatedDataFrame(sampsheet),
+			    featureData = AnnotatedDataFrame(dat_fData)
+			    )
+
+write_rds(eset_betas, file = "../data/formatted/eset_betas_MS.rds")
+
+eset_Mvals <- ExpressionSet(assayData = Mvals,
+			    phenoData = AnnotatedDataFrame(sampsheet),
+			    featureData = AnnotatedDataFrame(dat_fData)
+			    )
+
+write_rds(eset_Mvals, file = "../data/formatted/eset_Mvals_MS.rds")
+```
+
+## QC on IDATs
+
+The sesame pipeline above already produced cleaned data. This chunk goes backwards and examines QC of the raw data again.
+
+Read in idats as sigsets, apply QC.
+
+The Sigset data structure is an S4 class with 6 slots. Using lapply with readIDATpair creates a list of Sigset objects. Each list element is a Sigset for each sample. To plot or anything across samples, you'll need to apply a function across the list.
+
+```{r, cache = TRUE, message = FALSE, warning = FALSE}
+pdat <- pData(eset_Mvals)
+IDATprefixes <- searchIDATprefixes(dir.name = "../data/raw/idatFiles/")
+ssets <- lapply(IDATprefixes, readIDATpair)
+qc10 <- do.call(rbind, lapply(ssets, function(x) as.data.frame(sesameQC(x))))
+#add sample names
+sum(names(ssets) != pdat$Basename)
+cbind(names(ssets), pdat$Basename)
+qc10 <- qc10 %>%
+	mutate(sample_name = pdat$SampleLabel) %>%
+	mutate(sample_desc = pdat$Description) %>%
+	dplyr::select(sample_name, sample_desc, everything())
+
+#frac_na_cg = percentage of cg probes with NA
+#mean_intensity = for type II probes. Low intensity typically bad quality
+#mean_beta_cg = mean beta cg probes
+#frac_meth_cg = percentage cg probes with beta > 0.7
+#frac_unmeth_cg = percentage cg probes with beta < 0.3
+#GCT = residual incomplete bisulfite conversion. Closer to one = more complete conversion.
+qcvars <- c("sample_name", "sample_desc", "num_probes_cg", "num_na_cg", "frac_na_cg", "mean_intensity", "mean_beta_cg", "frac_meth_cg", "frac_unmeth_cg", "sex", "age", "ethnicity", "GCT")
+qc10 %>%
+	dplyr::select(any_of(qcvars)) %>%
+	kable
+
+```
+
+
+## Missing analysis of masked Betas
+
+The fraction of NAs are signs of masking due to variety of reasons including failed detection, high background, putative low quality probes etc. 
+
+Now we move back to the QCed betas generated from the first step. 
+
+First, remove failed samples and probes. How many samples are missing across all probes? How many probes are missing across all samples? 
+
+```{r, cache = TRUE}
+
+eset_betas <- read_rds("../data/formatted/eset_betas_MS.rds")
+eset_Mvals <- read_rds("../data/formatted/eset_Mvals_MS.rds")
+dim(eset_Mvals) #865,918 probes
+e <- exprs(eset_Mvals)
+pdat <- pData(eset_Mvals)
+miss_sample <- apply(e, 2, function(x) sum(is.na(x))/length(x) )
+miss_probe_blank <- apply(e, 1, function(x) sum(is.na(x))/length(x) )
+length(miss_sample)
+length(miss_probe_blank)
+sum(miss_sample >= 0.95) #0 samples have missing rate greater than 95% 
+#no samples that are essentially blanks.
+#show missingness for all samples
+data.frame(sampleID = names(miss_sample), treatment = pdat$treatment, miss_sample = miss_sample, stringsAsFactors = F) %>%
+  kable()
+
+sum(miss_probe_blank >= 1) #119,631 completely missing probes. Many are masked by design.
+sum(miss_probe_blank >= 0.95) #121,925 Remove these, then determine number of samples with missing rate>0.05.
+
+#keep probes with < 0.95 missingness
+eset_Mvals_clean <- eset_Mvals[miss_probe_blank < 0.95,]
+dim(eset_Mvals_clean) #743,993 probes
+eset_betas_clean <- eset_betas[miss_probe_blank < 0.95,]
+dim(eset_betas_clean)
+
+#After removing failed probes, estimate sample missing rate.
+e <- exprs(eset_Mvals_clean)
+miss_sample <- apply(e, 2, function(x) sum(is.na(x))/length(x) )
+miss_probe <- apply(e, 1, function(x) sum(is.na(x))/length(x) )
+
+data.frame(sampleID = names(miss_sample), treatment = pdat$treatment, miss_sample = miss_sample, stringsAsFactors = F) %>%
+  kable()
+
+#After removing failed probes, estimate probe missing rate
+
+sum(miss_probe == 0) #692,879 probes with no missings
+sum(miss_probe > 0) #51,114 probes with missings in at least one sample
+miss_probe_f <- cut(miss_probe, breaks = seq(0, 1, 0.1))
+table(miss_probe_f)
+
+data.frame(missing_interval = miss_probe_f) %>%
+	filter(!is.na(missing_interval)) %>%
+	ggplot(aes(missing_interval)) + 
+	geom_bar()
+
+#Keep probes with missing rate <= 5%
+eset_Mvals_clean <- eset_Mvals_clean[miss_probe <= 0.05,]
+dim(eset_Mvals_clean) #701,736 probes
+
+```
+
+## Distributions
+
+Summary of sample IDs and descriptions
+
+```{r cache = TRUE}
+p1 <- pData(eset_Mvals_clean)
+p1 %>%
+	dplyr::select(sampleID, Description) %>%
+	kable()
+```
+
+### Boxplots of M-values
+
+```{r cache = TRUE}
+boxplot(exprs(eset_Mvals_clean), las = 2, ylab = "M-values")
+abline(h = median(exprs(eset_Mvals_clean)), col = "blue")
+
+```
+
+### Density plot sample groups
+
+```{r cache = TRUE}
+p1 <- pData(eset_Mvals_clean)
+p1 %>%
+	dplyr::select(sampleID, SampleLabel, Description, treatment) %>%
+	kable()
+
+eset_Mvals_sub <- eset_Mvals_clean[,which(p1$treatment == "sen_ATV" | p1$treatment == "noSen_ATV")]
+plotDensities(eset_Mvals_sub, main = "M values ATV", legend = TRUE)
+
+```
+
+## PCA ATV samples
+```{r cache = TRUE}
+plot_MDS <- function(mylabel, myeset){
+	group <- pData(myeset)[[mylabel]]
+	col.group <- droplevels(group)
+	col.legend <- droplevels(group)
+	levels(col.group) <- brewer.pal(nlevels(col.group), "Set1")
+	col.group.ch <- as.character(col.group)
+	plotMDS(myeset, col = col.group.ch, gene.selection = "common", main = paste(mylabel, "labels"), pch = 16)
+	legend("top", fill = levels(col.group), legend = levels(col.legend))
+}
+
+keep <- str_detect(pData(eset_Mvals_clean)$sampleID, "ATV")
+eset_sub <- eset_Mvals_clean[, keep]
+plot_MDS(mylabel = "treatment", myeset = eset_sub)
+
+#plot with sample labels
+plotMDS(eset_sub, label = pData(eset_sub)[["sampleID"]], gene.selection = "common", 
+	main = "ATV sample IDs", pch = 16)
+
+#PCA to extract PCs to adjust for
+#First remove probes with any missings
+library(ggfortify)
+e <- exprs(eset_sub)
+miss_probe <- apply(e, 1, function(x) sum(is.na(x))/length(x) )
+length(miss_probe)
+sum(miss_probe == 0)
+eset_sub <- eset_sub[miss_probe == 0,]
+eset_pca <- prcomp(t(exprs(eset_sub)), center = TRUE, scale = TRUE)
+#summary(eset_pca)
+autoplot(eset_pca, data = pData(eset_sub), color = "Description", shape = FALSE)
+eset_PC <- eset_pca[["x"]]
+
+
+```
+## Probe-wise analysis of senescence treatment
+
+### Model parameterization
+
+Group means parameterization. No intercept. 
+
+$$ Y = B_1X_1 + B_2X_2 + B_3X_3 + B_4X_4 + B_5X_5 + B_6X_6 + \epsilon $$
+
+$B_1$ = mean expression level in noSen_ATV. 
+
+$B_2$ = mean expression level in noSen_Mt_Py. 
+
+$B_3$ = mean expression level in noSen_Mt_noPy. 
+
+$B_4$ = mean expression level in noSen_noMt_Py.
+
+$B_5$ = mean expression level in sen_ATV.
+
+$B_6$ = mean expression level in sen_noMt_noPy.
+
+After model fit, contrasts are set that represent difference in group means.
+
+logFC = estimate of the log2-fold-change
+
+CI.L = lower 95% confidence interval for logFC
+
+CI.R = upper 95% confidence interval for logFC
+
+AveExpr = average log2-expression for the probe over all samples
+
+t = moderated t-statistic
+
+P.value = unadjusted P-value
+
+adj.P.value = BH 1995 adjusted P-value
+
+B = log-odds that the variable is differentially abundant. 
+
+From the limma user guide: Suppose for example that B = 1.5. The odds of differential expression is exp(1.5)=4.48, i.e, about four and a half to one. The probability that the gene is differentially expressed is 4.48/(1+4.48)=0.82, i.e., the probability is about 82% that this gene is differentially expressed. A B-statistic of zero corresponds to a 50-50 chance that the gene is differentially expressed. The B-statistic is automatically adjusted for multiple testing by assuming that 1% of the genes are expected to be differentially expressed. The p-values and B-statistics will normally rank genes in the same order. 
+
+
+
+```{r, cache = TRUE}
+
+keep <- str_detect(pData(eset_Mvals_clean)$sampleID, "ATV")
+eset_sub <- eset_Mvals_clean[, keep]
+my_pData <- pData(eset_sub)
+my_pData$PC1 <- eset_PC[,1]
+my_pData$PC2 <- eset_PC[,2]
+
+design <- model.matrix(~0 + treatment + PC1 + PC2, data = my_pData)
+design
+colSums(design)
+
+cm <- makeContrasts(ATVvControl = treatmentsen_ATV - treatmentnoSen_ATV,
+		    levels = design
+		    )
+fit <- lmFit(eset_sub, design)
+fit2 <- contrasts.fit(fit, contrasts = cm)
+fit2 <- eBayes(fit2)
+
+results <- decideTests(fit2)
+summary(results)
+vennDiagram(results)
+
+volcanoplot(fit2, coef = "ATVvControl" , main = "ATV vs control")
+
+annot_cols <- c("CpG_chrm", "CpG_beg", "probeID", "gene")
+topTable(fit2, coef = "ATVvControl", genelist = fit2$genes[,annot_cols], p.value = 0.2, confint = TRUE) %>%
+	kable()
+
+#save results 
+resultAll <- topTable(fit2, coef = "ATVvControl", sort.by = "none", number = nrow(fit2), confint = TRUE)
+write_csv(resultAll, path = paste0(dir_out, "ATVvControl.csv"))
+
+
+```
+
+
+# R session 
+
+```{r}
+sessionInfo()
+```
