@@ -322,7 +322,7 @@ pData(eset_Mvals_clean) <- p1
 plot_MDS(mylabel = "chip", myeset = eset_Mvals_clean)
 ```
 
-### PCA all samples with sample labels
+### PCA all samples with treatment labels
 ```{r}
 
 plot_MDS(mylabel = "treatment", myeset = eset_Mvals_clean)
@@ -335,7 +335,7 @@ plot_MDS(mylabel = "treatment", myeset = eset_Mvals_clean)
 
 ### Density plot sample groups
 
-```{r eval = FALSE}
+```{r}
 p1 <- pData(eset_Mvals_clean) %>%
 	dplyr::select(sampleID, SampleLabel, Description, treatment) %>%
 	kable()
@@ -346,7 +346,7 @@ plotDensities(eset_Mvals_clean, main = "M values", legend = TRUE)
 ```
 
 ## PCA ATV samples
-```{r eval = FALSE}
+```{r eval = FALSE, include = FALSE}
 plot_MDS <- function(mylabel, myeset){
 	group <- pData(myeset)[[mylabel]]
 	col.group <- droplevels(group)
@@ -430,6 +430,8 @@ design
 colSums(design)
 
 cm <- makeContrasts(ATVvControl = treatmentsen_ATV - treatmentnoSen_ATV,
+		    SenMidasvNoSenMtnoPy = treatmentsen_noMt_noPy - treatmentnoSen_Mt_noPy,
+		    SenMidasvNoSenNoMtPy = treatmentsen_noMt_noPy - treatmentnoSen_noMt_Py,
 		    levels = design
 		    )
 fit <- lmFit(eset_Mvals_clean, design)
@@ -444,13 +446,25 @@ volcanoplot(fit2, coef = "ATVvControl" , main = "ATV vs control")
 
 annot_cols <- c("CpG_chrm", "CpG_beg", "probeID", "gene")
 topTable(fit2, coef = "ATVvControl", genelist = fit2$genes[,annot_cols], 
-	 p.value = 0.1, confint = TRUE) %>%
+	 p.value = 0.05, confint = TRUE) %>%
 	kable()
+
+topTable(fit2, coef = "SenMidasvNoSenMtnoPy", genelist = fit2$genes[,annot_cols], 
+	 p.value = 0.05, confint = TRUE) %>%
+    kable()
+
+topTable(fit2, coef = "SenMidasvNoSenNoMtPy", genelist = fit2$genes[,annot_cols], 
+	 p.value = 0.05, confint = TRUE) %>%
+    kable()
 
 #save results 
 resultAll <- topTable(fit2, coef = "ATVvControl", sort.by = "none", number = nrow(fit2), confint = TRUE)
 write_csv(resultAll, file = paste0(dir_out, "ATVvControl.csv"))
 
+resultAll <- topTable(fit2, coef = "SenMidasvNoSenMtnoPy", sort.by = "none", number = nrow(fit2), confint = TRUE)
+write_csv(resultAll, file = paste0(dir_out, "SenMidasvNoSenMtnoPy.csv"))
+resultAll <- topTable(fit2, coef = "SenMidasvNoSenNoMtPy", sort.by = "none", number = nrow(fit2), confint = TRUE)
+write_csv(resultAll, file = paste0(dir_out, "SenMidasvNoSenNoMtPy.csv"))
 
 ```
 
