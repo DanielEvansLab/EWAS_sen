@@ -79,7 +79,7 @@ library(wheatmap)
 library(multtest)
 library(limma)
 library(RColorBrewer)
-library(missMethyl)
+#library(missMethyl)
 #library(IlluminaHumanMethylationEPICmanifest)
 #library(IlluminaHumanMethylationEPICanno.ilm10b4.hg19)
 ```
@@ -260,13 +260,14 @@ miss_sample <- apply(e, 2, function(x) sum(is.na(x))/length(x) )
 miss_probe <- apply(e, 1, function(x) sum(is.na(x))/length(x) )
 
 data.frame(sampleID = names(miss_sample), treatment = pdat$treatment, miss_sample = miss_sample, stringsAsFactors = F) %>%
-  kable()
+	arrange(desc(miss_sample)) %>%
+	kable()
 
 #After removing failed probes, estimate probe missing rate
 
 sum(miss_probe == 0) #692,879 probes with no missings
 sum(miss_probe > 0) #51,114 probes with missings in at least one sample
-miss_probe_f <- cut(miss_probe, breaks = seq(0, 1, 0.1))
+miss_probe_f <- cut(miss_probe, breaks = seq(0, 1, 0.05))
 table(miss_probe_f)
 
 data.frame(missing_interval = miss_probe_f) %>%
@@ -284,7 +285,7 @@ dim(eset_Mvals_clean) #701,736 probes
 
 Summary of sample IDs and descriptions
 
-```{r cache = TRUE}
+```{r}
 p1 <- pData(eset_Mvals_clean)
 p1 %>%
 	dplyr::select(sampleID, Description) %>%
@@ -293,17 +294,49 @@ p1 %>%
 
 ### Boxplots of M-values
 
-```{r cache = TRUE}
+```{r}
 boxplot(exprs(eset_Mvals_clean), las = 2, ylab = "M-values")
 abline(h = median(exprs(eset_Mvals_clean)), col = "blue")
 
 ```
 
+### PCA all samples with chip labels
+```{r}
+plot_MDS <- function(mylabel, myeset){
+	group <- pData(myeset)[[mylabel]]
+	col.group <- droplevels(group)
+	col.legend <- droplevels(group)
+	levels(col.group) <- brewer.pal(nlevels(col.group), "Set1")
+	col.group.ch <- as.character(col.group)
+	plotMDS(myeset, col = col.group.ch, gene.selection = "common", main = paste(mylabel, "labels"), pch = 16)
+	legend("top", fill = levels(col.group), legend = levels(col.legend))
+}
+
+p1 <- pData(eset_Mvals_clean)
+table(str_remove(p1$Basename, pattern = "_.*$"))
+p1 <- p1 %>%
+	mutate(chip = as.factor(str_remove(Basename, pattern = "_.*$")))
+table(p1$chip)
+pData(eset_Mvals_clean) <- p1
+
+plot_MDS(mylabel = "chip", myeset = eset_Mvals_clean)
+```
+
+### PCA all samples with sample labels
+```{r}
+
+plot_MDS(mylabel = "sampleID", myeset = eset_Mvals_clean)
+#plotMDS(eset_sub, label = pData(eset_sub)[["sampleID"]], gene.selection = "common", 
+#	main = "ATV sample IDs", pch = 16)
+
+
+```
+
+
 ### Density plot sample groups
 
-```{r cache = TRUE}
-p1 <- pData(eset_Mvals_clean)
-p1 %>%
+```{r eval = FALSE}
+p1 <- pData(eset_Mvals_clean) %>%
 	dplyr::select(sampleID, SampleLabel, Description, treatment) %>%
 	kable()
 
@@ -313,7 +346,7 @@ plotDensities(eset_Mvals_sub, main = "M values ATV", legend = TRUE)
 ```
 
 ## PCA ATV samples
-```{r cache = TRUE}
+```{r eval = FALSE}
 plot_MDS <- function(mylabel, myeset){
 	group <- pData(myeset)[[mylabel]]
 	col.group <- droplevels(group)
@@ -391,18 +424,8 @@ From the limma user guide: Suppose for example that B = 1.5. The odds of differe
 
 ```{r, cache = TRUE}
 
-keep <- str_detect(pData(eset_Mvals_clean)$sampleID, "ATV")
-eset_sub <- eset_Mvals_clean[, keep]
-my_pData <- pData(eset_sub)
-my_pData$PC1 <- eset_PC[,1]
-my_pData$PC2 <- eset_PC[,2]
-my_pData$PC3 <- eset_PC[,3]
-my_pData$PC4 <- eset_PC[,4]
-my_pData$PC5 <- eset_PC[,5]
-my_pData$PC6 <- eset_PC[,6]
-my_pData$PC7 <- eset_PC[,7]
-
-design <- model.matrix(~0 + treatment + PC1 + PC2 + PC3 + PC4, data = my_pData)
+my_pData <- pData(eset_Mvals_clean)
+design <- model.matrix(~0 + treatment + chip, data = my_pData)
 design
 colSums(design)
 
