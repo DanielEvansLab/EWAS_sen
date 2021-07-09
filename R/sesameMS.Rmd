@@ -103,7 +103,7 @@ The pipeline can be thought of as adding pOOBAH to noob. Then also the non-linea
 
 OpenSesame takes 12 minutes, so run it once and save the output.
 
-```{r, cache = TRUE, message = FALSE, warning = FALSE}
+```{r, eval = FALSE, message = FALSE, warning = FALSE}
 
 IDATprefixes <- searchIDATprefixes(dir.name = "../data/raw/idatFiles/")
 t1 <- Sys.time()
@@ -193,7 +193,7 @@ Read in idats as sigsets, apply QC.
 
 The Sigset data structure is an S4 class with 6 slots. Using lapply with readIDATpair creates a list of Sigset objects. Each list element is a Sigset for each sample. To plot or anything across samples, you'll need to apply a function across the list.
 
-```{r, cache = TRUE, message = FALSE, warning = FALSE}
+```{r, eval = FALSE, message = FALSE, warning = FALSE}
 pdat <- pData(eset_Mvals)
 IDATprefixes <- searchIDATprefixes(dir.name = "../data/raw/idatFiles/")
 ssets <- lapply(IDATprefixes, readIDATpair)
@@ -304,12 +304,12 @@ abline(h = median(exprs(eset_Mvals_clean)), col = "blue")
 ```{r}
 plot_MDS <- function(mylabel, myeset){
 	group <- pData(myeset)[[mylabel]]
-	col.group <- droplevels(group)
-	col.legend <- droplevels(group)
+	col.group <- group
 	levels(col.group) <- brewer.pal(nlevels(col.group), "Set1")
 	col.group.ch <- as.character(col.group)
-	plotMDS(myeset, col = col.group.ch, gene.selection = "common", main = paste(mylabel, "labels"), pch = 16)
-	legend("top", fill = levels(col.group), legend = levels(col.legend))
+	plotMDS(myeset, col = col.group.ch, gene.selection = "common", 
+		main = paste(mylabel, "labels"), pch = 16)
+	legend("top", fill = levels(col.group), legend = levels(group))
 }
 
 p1 <- pData(eset_Mvals_clean)
@@ -325,7 +325,7 @@ plot_MDS(mylabel = "chip", myeset = eset_Mvals_clean)
 ### PCA all samples with sample labels
 ```{r}
 
-plot_MDS(mylabel = "sampleID", myeset = eset_Mvals_clean)
+plot_MDS(mylabel = "treatment", myeset = eset_Mvals_clean)
 #plotMDS(eset_sub, label = pData(eset_sub)[["sampleID"]], gene.selection = "common", 
 #	main = "ATV sample IDs", pch = 16)
 
@@ -340,8 +340,8 @@ p1 <- pData(eset_Mvals_clean) %>%
 	dplyr::select(sampleID, SampleLabel, Description, treatment) %>%
 	kable()
 
-eset_Mvals_sub <- eset_Mvals_clean[,which(p1$treatment == "sen_ATV" | p1$treatment == "noSen_ATV")]
-plotDensities(eset_Mvals_sub, main = "M values ATV", legend = TRUE)
+#eset_Mvals_sub <- eset_Mvals_clean[,which(p1$treatment == "sen_ATV" | p1$treatment == "noSen_ATV")]
+plotDensities(eset_Mvals_clean, main = "M values", legend = TRUE)
 
 ```
 
@@ -432,7 +432,7 @@ colSums(design)
 cm <- makeContrasts(ATVvControl = treatmentsen_ATV - treatmentnoSen_ATV,
 		    levels = design
 		    )
-fit <- lmFit(eset_sub, design)
+fit <- lmFit(eset_Mvals_clean, design)
 fit2 <- contrasts.fit(fit, contrasts = cm)
 fit2 <- eBayes(fit2)
 
@@ -443,7 +443,8 @@ vennDiagram(results)
 volcanoplot(fit2, coef = "ATVvControl" , main = "ATV vs control")
 
 annot_cols <- c("CpG_chrm", "CpG_beg", "probeID", "gene")
-topTable(fit2, coef = "ATVvControl", genelist = fit2$genes[,annot_cols], p.value = 0.2, confint = TRUE) %>%
+topTable(fit2, coef = "ATVvControl", genelist = fit2$genes[,annot_cols], 
+	 p.value = 0.1, confint = TRUE) %>%
 	kable()
 
 #save results 
