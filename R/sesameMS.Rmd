@@ -378,8 +378,12 @@ eset_pca <- prcomp(e_resid, center = TRUE, scale = TRUE)
 summary(eset_pca)
 myrownames <- paste(pdat$treatment, seq_along(pdat$treatment), sep = "_")
 rownames(pdat) <- myrownames
-autoplot(eset_pca, data = pdat, colour = "chip", label = TRUE)
+autoplot(eset_pca, data = pdat, colour = "chip", label = TRUE, shape = FALSE)
 ggsave(filename = "PCA_resid_chip.png")
+
+autoplot(eset_pca, data = pdat, colour = "treatment")
+ggsave(filename = "PCA_resid_treatment.png")
+
 eset_PC <- eset_pca[["x"]]
 
 
