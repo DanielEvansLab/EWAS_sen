@@ -376,8 +376,9 @@ e_resid <- read_rds("../data/formatted/mvals_resid.rds")
 library(ggfortify)
 eset_pca <- prcomp(e_resid, center = TRUE, scale = TRUE)
 summary(eset_pca)
-
-autoplot(eset_pca, data = pdat, colour = "chip", shape = FALSE)
+myrownames <- paste(pdat$treatment, seq_along(pdat$treatment), sep = "_")
+rownames(pdat) <- myrownames
+autoplot(eset_pca, data = pdat, colour = "chip", label = TRUE)
 ggsave(filename = "PCA_resid_chip.png")
 eset_PC <- eset_pca[["x"]]
 
