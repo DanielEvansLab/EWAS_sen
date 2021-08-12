@@ -228,7 +228,7 @@ Now we move back to the QCed betas generated from the first step.
 
 First, remove failed samples and probes. How many samples are missing across all probes? How many probes are missing across all samples? 
 
-```{r, cache = TRUE}
+```{r, cache = TRUE, eval = FALSE}
 
 eset_betas <- read_rds("../data/formatted/eset_betas_MS.rds")
 eset_Mvals <- read_rds("../data/formatted/eset_Mvals_MS.rds")
@@ -251,8 +251,8 @@ sum(miss_probe_blank >= 0.95) #121,925 Remove these, then determine number of sa
 #keep probes with < 0.95 missingness
 eset_Mvals_clean <- eset_Mvals[miss_probe_blank < 0.95,]
 dim(eset_Mvals_clean) #743,993 probes
-eset_betas_clean <- eset_betas[miss_probe_blank < 0.95,]
-dim(eset_betas_clean)
+#eset_betas_clean <- eset_betas[miss_probe_blank < 0.95,]
+#dim(eset_betas_clean)
 
 #After removing failed probes, estimate sample missing rate.
 e <- exprs(eset_Mvals_clean)
@@ -329,6 +329,80 @@ plot_MDS(mylabel = "treatment", myeset = eset_Mvals_clean)
 #plotMDS(eset_sub, label = pData(eset_sub)[["sampleID"]], gene.selection = "common", 
 #	main = "ATV sample IDs", pch = 16)
 
+
+```
+
+### Regressing out chip effects
+
+Does regressing out chip effects remove data clustering? 
+
+First, extract residuals from lm adjusting for chip.
+
+Then, create a new expressionSet object with residuals.
+
+Then, run plotMDS using new eset. 
+
+```{r}
+e <- exprs(eset_Mvals_clean)
+pdat <- pData(eset_Mvals_clean)
+#pdat <- pdat %>%
+#	mutate(chip = as.factor(str_remove(Basename, pattern = "_.*$")))
+sum(names(e[1,]) != pdat$sampleID)
+lm_fun <- function(cg, dataModel){
+	out <- tryCatch({
+	  lm1 <- lm(cg ~ chip, data = dataModel, na.action = na.omit)
+	  resid1 <- resid(lm1)
+	  return(resid1)
+	}, 
+	error = function(e) rep(NA, 32)
+			)
+}
+e_resid <- apply(e, 1, lm_fun, dataModel = pdat)
+dim(e_resid)
+#could return an array or list
+#count non-missing values in each element of the list,
+#then, subset the list to ony include elements with 32 values
+#then, create a dataframe from it
+samp_count <- map_int(e_resid, function(x) sum(!is.na(x)))
+table(samp_count)
+#There are 8857 probes with one missing value. 
+length(names(samp_count[samp_count == 32]))
+e_resid_32 <- e_resid[samp_count == 32]
+e_resid_32 <- as.data.frame(e_resid_32)
+write_rds(e_resid_32, file = "../data/formatted/mvals_resid.rds")
+
+e_resid <- read_rds("../data/formatted/mvals_resid.rds")
+
+library(ggfortify)
+eset_pca <- prcomp(e_resid, center = TRUE, scale = TRUE)
+summary(eset_pca)
+
+autoplot(eset_pca, data = pdat, color = "chip", shape = FALSE)
+ggsave(filename = "PCA_resid_chip.png")
+eset_PC <- eset_pca[["x"]]
+
+
+
+e_resid_mat <- as.matrix(e_resid)
+
+colnames(Mvals) <- sampsheet$sampleID 
+row.names(sampsheet) <- sampsheet$sampleID
+fdat <- fData(eset_Mvals_clean)
+#Probe annotation
+dat_fData <- read_tsv("~/bigdata/EWAStools/arrayAnnotation/EPIC.hg19.manifest.tsv")
+length(rownames(betas)) == length(dat_fData$probeID)
+sum(rownames(betas) != dat_fData$probeID)
+#Reorder annotation to match betas
+dat_fData <- dat_fData[match(rownames(betas), dat_fData$probeID),]
+sum(rownames(betas) != dat_fData$probeID)
+head(dat_fData$probeID)
+head(rownames(betas))
+row.names(dat_fData) <- dat_fData$probeID
+
+eset_betas <- ExpressionSet(assayData = betas,
+			    phenoData = AnnotatedDataFrame(sampsheet),
+			    featureData = AnnotatedDataFrame(dat_fData)
+			    )
 
 ```
 
