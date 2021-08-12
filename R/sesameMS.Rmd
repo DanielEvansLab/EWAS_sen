@@ -377,7 +377,7 @@ library(ggfortify)
 eset_pca <- prcomp(e_resid, center = TRUE, scale = TRUE)
 summary(eset_pca)
 
-autoplot(eset_pca, data = pdat, color = "chip", shape = FALSE)
+autoplot(eset_pca, data = pdat, colour = "chip", shape = FALSE)
 ggsave(filename = "PCA_resid_chip.png")
 eset_PC <- eset_pca[["x"]]
 
