@@ -371,9 +371,25 @@ e_resid_32 <- e_resid[samp_count == 32]
 e_resid_32 <- as.data.frame(e_resid_32)
 write_rds(e_resid_32, file = "../data/formatted/mvals_resid.rds")
 
+#Also subset the original dataset to the same probes
+myprobenames <- rownames(e) %in% names(e_resid)
+e <- e[myprobenames,]
+e <- t(e)
+
 e_resid <- read_rds("../data/formatted/mvals_resid.rds")
 
 library(ggfortify)
+#PCA of original data
+eset_pca <- prcomp(e, center = TRUE, scale = TRUE)
+summary(eset_pca)
+myrownames <- paste(pdat$treatment, seq_along(pdat$treatment), sep = "_")
+rownames(pdat) <- myrownames
+autoplot(eset_pca, data = pdat, colour = "chip", label = TRUE, shape = FALSE)
+ggsave(filename = "PCA_e_chip.png")
+
+autoplot(eset_pca, data = pdat, colour = "treatment")
+ggsave(filename = "PCA_e_treatment.png")
+
 eset_pca <- prcomp(e_resid, center = TRUE, scale = TRUE)
 summary(eset_pca)
 myrownames <- paste(pdat$treatment, seq_along(pdat$treatment), sep = "_")
@@ -387,27 +403,6 @@ ggsave(filename = "PCA_resid_treatment.png")
 eset_PC <- eset_pca[["x"]]
 
 
-
-e_resid_mat <- as.matrix(e_resid)
-
-colnames(Mvals) <- sampsheet$sampleID 
-row.names(sampsheet) <- sampsheet$sampleID
-fdat <- fData(eset_Mvals_clean)
-#Probe annotation
-dat_fData <- read_tsv("~/bigdata/EWAStools/arrayAnnotation/EPIC.hg19.manifest.tsv")
-length(rownames(betas)) == length(dat_fData$probeID)
-sum(rownames(betas) != dat_fData$probeID)
-#Reorder annotation to match betas
-dat_fData <- dat_fData[match(rownames(betas), dat_fData$probeID),]
-sum(rownames(betas) != dat_fData$probeID)
-head(dat_fData$probeID)
-head(rownames(betas))
-row.names(dat_fData) <- dat_fData$probeID
-
-eset_betas <- ExpressionSet(assayData = betas,
-			    phenoData = AnnotatedDataFrame(sampsheet),
-			    featureData = AnnotatedDataFrame(dat_fData)
-			    )
 
 ```
 
