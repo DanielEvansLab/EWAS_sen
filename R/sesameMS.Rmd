@@ -79,7 +79,8 @@ library(wheatmap)
 library(multtest)
 library(limma)
 library(RColorBrewer)
-#library(missMethyl)
+library(kableExtra)
+library(missMethyl)
 #library(IlluminaHumanMethylationEPICmanifest)
 #library(IlluminaHumanMethylationEPICanno.ilm10b4.hg19)
 ```
@@ -291,6 +292,8 @@ pData(eset_Mvals_clean) <- p1
 write_rds(eset_Mvals_clean, file = "../data/formatted/eset_Mvals_MS_clean.rds")
 ```
 
+# Data distributions
+
 ## Distributions
 
 Summary of sample IDs and descriptions
@@ -303,7 +306,7 @@ p1 %>%
 	kable()
 ```
 
-### Boxplots of M-values
+## Boxplots of M-values
 
 ```{r cache = TRUE}
 eset_Mvals_clean <- read_rds("../data/formatted/eset_Mvals_MS_clean.rds")
@@ -312,7 +315,24 @@ abline(h = median(exprs(eset_Mvals_clean)), col = "blue")
 
 ```
 
-### MDS all samples with chip labels
+## Density plot sample groups
+
+```{r cache = TRUE}
+eset_Mvals_clean <- read_rds("../data/formatted/eset_Mvals_MS_clean.rds")
+p1 <- pData(eset_Mvals_clean) %>%
+	dplyr::select(sampleID, SampleLabel, Description, treatment) %>%
+	kable()
+
+#eset_Mvals_sub <- eset_Mvals_clean[,which(p1$treatment == "sen_ATV" | p1$treatment == "noSen_ATV")]
+plotDensities(eset_Mvals_clean, main = "M values", legend = TRUE)
+
+```
+
+# Cluster analysis
+
+Using MDS and PCA
+
+## MDS all samples with chip labels
 
 Multidimensional scaling using probes with most variance. Not the same as PCA. Should be similar, but not the same.
 
@@ -332,7 +352,7 @@ eset_Mvals_clean <- read_rds("../data/formatted/eset_Mvals_MS_clean.rds")
 plot_MDS(mylabel = "chip", myeset = eset_Mvals_clean)
 ```
 
-### MDS all samples with treatment labels
+## MDS all samples with treatment labels
 ```{r cache = TRUE}
 
 eset_Mvals_clean <- read_rds("../data/formatted/eset_Mvals_MS_clean.rds")
@@ -343,7 +363,7 @@ plot_MDS(mylabel = "treatment", myeset = eset_Mvals_clean)
 
 ```
 
-### Regressing out chip effects
+## Regressing out chip effects
 
 Does regressing out chip effects remove data clustering? 
 
@@ -376,11 +396,21 @@ e_resid <- map_dfc(e_df, lm_fun, dataModel = pdat)
 library(ggfortify)
 #PCA of original data
 eset_pca <- prcomp(e_df, center = TRUE, scale = TRUE)
+summary(eset_pca)
+#eset_pca$x
 eset_PC <- eset_pca[["x"]]
-#summary(eset_pca)
+pdat <- pdat %>%
+	mutate(PC1 = eset_PC[,"PC1"],
+	       PC2 = eset_PC[,"PC2"],
+	       PC3 = eset_PC[,"PC3"])
+#Save new PCs to eset object
+pData(eset_Mvals_clean) <- pdat
+write_rds(eset_Mvals_clean, file = "../data/formatted/eset_Mvals_MS_cleanPC.rds")
+
 var_explained <- eset_pca$sdev^2 / sum(eset_pca$sdev^2)
 data.frame("var_explained" = var_explained, "PC" = seq_along(var_explained)) %>%
 	ggplot(mapping = aes(x = PC, y = var_explained)) +
+	geom_point() +
 	geom_line()
 myrownames <- paste(pdat$treatment, seq_along(pdat$treatment), sep = "_")
 rownames(pdat) <- myrownames
@@ -391,35 +421,25 @@ autoplot(eset_pca, data = pdat, colour = "treatment")
 #ggsave(filename = "PCA_e_treatment.png")
 
 #PCA of residuals
-eset_pca <- prcomp(e_resid, center = TRUE, scale = TRUE)
-var_explained <- eset_pca$sdev^2 / sum(eset_pca$sdev^2)
+eset_pca_resid <- prcomp(e_resid, center = TRUE, scale = TRUE)
+var_explained <- eset_pca_resid$sdev^2 / sum(eset_pca_resid$sdev^2)
 data.frame("var_explained" = var_explained, "PC" = seq_along(var_explained)) %>%
 	ggplot(mapping = aes(x = PC, y = var_explained)) +
+	geom_point() +
 	geom_line()
 #summary(eset_pca)
-autoplot(eset_pca, data = pdat, colour = "chip", label = TRUE, shape = FALSE)
+autoplot(eset_pca_resid, data = pdat, colour = "chip", label = TRUE, shape = FALSE)
 #ggsave(filename = "PCA_resid_chip.png")
 
-autoplot(eset_pca, data = pdat, colour = "treatment")
+autoplot(eset_pca_resid, data = pdat, colour = "treatment")
 #ggsave(filename = "PCA_resid_treatment.png")
 
 ```
 
 
-### Density plot sample groups
 
-```{r cache = TRUE}
-eset_Mvals_clean <- read_rds("../data/formatted/eset_Mvals_MS_clean.rds")
-p1 <- pData(eset_Mvals_clean) %>%
-	dplyr::select(sampleID, SampleLabel, Description, treatment) %>%
-	kable()
+PCA ATV samples
 
-#eset_Mvals_sub <- eset_Mvals_clean[,which(p1$treatment == "sen_ATV" | p1$treatment == "noSen_ATV")]
-plotDensities(eset_Mvals_clean, main = "M values", legend = TRUE)
-
-```
-
-## PCA ATV samples
 ```{r eval = FALSE, include = FALSE}
 plot_MDS <- function(mylabel, myeset){
 	group <- pData(myeset)[[mylabel]]
@@ -454,9 +474,9 @@ eset_PC <- eset_pca[["x"]]
 
 
 ```
-## Probe-wise analysis of senescence treatment
+# Probe-wise analysis of senescence treatment
 
-### Model parameterization
+## Model parameterization
 
 Group means parameterization. No intercept. 
 
@@ -494,11 +514,38 @@ B = log-odds that the variable is differentially abundant.
 
 From the limma user guide: Suppose for example that B = 1.5. The odds of differential expression is exp(1.5)=4.48, i.e, about four and a half to one. The probability that the gene is differentially expressed is 4.48/(1+4.48)=0.82, i.e., the probability is about 82% that this gene is differentially expressed. A B-statistic of zero corresponds to a 50-50 chance that the gene is differentially expressed. The B-statistic is automatically adjusted for multiple testing by assuming that 1% of the genes are expected to be differentially expressed. The p-values and B-statistics will normally rank genes in the same order. 
 
+## No adjustment
 
+Not adjusted for chip or PCs. Inflated results.
 
 ```{r cache = TRUE}
 
-eset_Mvals_clean <- read_rds("../data/formatted/eset_Mvals_MS_clean.rds")
+eset_Mvals_clean <- read_rds("../data/formatted/eset_Mvals_MS_cleanPC.rds")
+my_pData <- pData(eset_Mvals_clean)
+design <- model.matrix(~0 + treatment, data = my_pData)
+colSums(design)
+
+cm <- makeContrasts(ATVvControl = treatmentsen_ATV - treatmentnoSen_ATV,
+		    SenMidasvNoSenMtnoPy = treatmentsen_noMt_noPy - treatmentnoSen_Mt_noPy,
+		    SenMidasvNoSenNoMtPy = treatmentsen_noMt_noPy - treatmentnoSen_noMt_Py,
+		    levels = design
+		    )
+fit <- lmFit(eset_Mvals_clean, design)
+fit2 <- contrasts.fit(fit, contrasts = cm)
+fit2 <- eBayes(fit2)
+
+results <- decideTests(fit2)
+summary(results)
+vennDiagram(results)
+
+```
+
+
+## Chip adjustment
+
+```{r cache = TRUE}
+
+eset_Mvals_clean <- read_rds("../data/formatted/eset_Mvals_MS_cleanPC.rds")
 my_pData <- pData(eset_Mvals_clean)
 design <- model.matrix(~0 + treatment + chip, data = my_pData)
 design
@@ -534,15 +581,148 @@ topTable(fit2, coef = "SenMidasvNoSenNoMtPy", genelist = fit2$genes[,annot_cols]
 
 #save results 
 resultAll <- topTable(fit2, coef = "ATVvControl", sort.by = "none", number = nrow(fit2), confint = TRUE)
-write_csv(resultAll, file = paste0(dir_out, "ATVvControl.csv"))
-
+write_csv(resultAll, file = paste0(dir_out, "ATVvControl_chip.csv"))
 resultAll <- topTable(fit2, coef = "SenMidasvNoSenMtnoPy", sort.by = "none", number = nrow(fit2), confint = TRUE)
-write_csv(resultAll, file = paste0(dir_out, "SenMidasvNoSenMtnoPy.csv"))
+write_csv(resultAll, file = paste0(dir_out, "SenMidasvNoSenMtnoPy_chip.csv"))
 resultAll <- topTable(fit2, coef = "SenMidasvNoSenNoMtPy", sort.by = "none", number = nrow(fit2), confint = TRUE)
-write_csv(resultAll, file = paste0(dir_out, "SenMidasvNoSenNoMtPy.csv"))
+write_csv(resultAll, file = paste0(dir_out, "SenMidasvNoSenNoMtPy_chip.csv"))
 
 ```
 
+## Chip and PC adjustment
+
+```{r cache = TRUE}
+
+eset_Mvals_clean <- read_rds("../data/formatted/eset_Mvals_MS_cleanPC.rds")
+my_pData <- pData(eset_Mvals_clean)
+design <- model.matrix(~0 + treatment + chip + PC1 + PC2, data = my_pData)
+design
+colSums(design)
+
+cm <- makeContrasts(ATVvControl = treatmentsen_ATV - treatmentnoSen_ATV,
+		    SenMidasvNoSenMtnoPy = treatmentsen_noMt_noPy - treatmentnoSen_Mt_noPy,
+		    SenMidasvNoSenNoMtPy = treatmentsen_noMt_noPy - treatmentnoSen_noMt_Py,
+		    levels = design
+		    )
+fit <- lmFit(eset_Mvals_clean, design)
+fit2 <- contrasts.fit(fit, contrasts = cm)
+fit2 <- eBayes(fit2)
+
+results <- decideTests(fit2)
+summary(results)
+vennDiagram(results)
+
+volcanoplot(fit2, coef = "ATVvControl" , main = "ATV vs control")
+
+annot_cols <- c("CpG_chrm", "CpG_beg", "probeID", "gene")
+topTable(fit2, coef = "ATVvControl", genelist = fit2$genes[,annot_cols], 
+	 p.value = 0.05, confint = TRUE) %>%
+	kable()
+
+topTable(fit2, coef = "SenMidasvNoSenMtnoPy", genelist = fit2$genes[,annot_cols], 
+	 p.value = 0.05, confint = TRUE) %>%
+    kable()
+
+topTable(fit2, coef = "SenMidasvNoSenNoMtPy", genelist = fit2$genes[,annot_cols], 
+	 p.value = 0.05, confint = TRUE) %>%
+    kable()
+
+#save results 
+resultAll <- topTable(fit2, coef = "ATVvControl", sort.by = "none", number = nrow(fit2), confint = TRUE)
+write_csv(resultAll, file = paste0(dir_out, "ATVvControl_chipPC.csv"))
+resultAll <- topTable(fit2, coef = "SenMidasvNoSenMtnoPy", sort.by = "none", number = nrow(fit2), confint = TRUE)
+write_csv(resultAll, file = paste0(dir_out, "SenMidasvNoSenMtnoPy_chipPC.csv"))
+resultAll <- topTable(fit2, coef = "SenMidasvNoSenNoMtPy", sort.by = "none", number = nrow(fit2), confint = TRUE)
+write_csv(resultAll, file = paste0(dir_out, "SenMidasvNoSenNoMtPy_chipPC.csv"))
+
+```
+
+## Results comparisons
+
+Compare results across 1) chip adjustment and 2) chip and PC adjustment. 
+
+```{r cache = TRUE, message = FALSE, warning = FALSE, results = 'asis'}
+dir_out <- "../results/"
+
+for(i in c("ATVvControl", "SenMidasvNoSenMtnoPy", "SenMidasvNoSenNoMtPy")){
+  print(paste0("Compare chip and chipPC with contrast ", i))
+  print("")
+
+  chip <- read_csv(paste0(dir_out, i, "_chip.csv"))
+  chipPC <- read_csv(paste0(dir_out, i, "_chipPC.csv"))
+  mycols <- c("probeID", "gene", "logFC", "t", "P.Value", "adj.P.Val")
+  chip <- chip %>%
+	select(any_of(mycols))
+  names(chip)[3:6] <- paste(names(chip)[3:6], "chip", sep = "_")
+  chipPC <- chipPC %>%
+	select(any_of(mycols))
+  names(chipPC)[3:6] <- paste(names(chipPC)[3:6], "chipPC", sep = "_")
+
+  t1 <- chipPC %>%
+	filter(adj.P.Val_chipPC <= 0.05) %>%
+	left_join(chip, by = "probeID") %>%
+	modify_if(is.double, ~ signif(., 3)) %>%
+	kbl() %>%
+	kable_styling(bootstrap_options = c("striped", "hover"))
+  print(t1)
+  
+  datMerge <- inner_join(chip, chipPC, by = "probeID")
+  print(paste("Correlation of t-statistics from chip and chipPC adjusted", 
+	      cor(datMerge$t_chip, datMerge$t_chipPC)
+	      )
+  )
+
+  p1 <- chipPC %>%
+	inner_join(chip, by = "probeID") %>%
+	filter(!is.na(t_chip)) %>%
+	filter(!is.na(t_chipPC)) %>%
+	ggplot(aes(x = t_chip, y = t_chipPC)) +
+	geom_hex() +
+	#geom_hex(binwidth = c(cor1, cor1)) +
+	labs(x = "Adjusted chip",
+	     y = "Adjusted chip and PCs",
+	     caption = i)
+  print(p1)
+
+
+}
+
+
+```
+
+```{r eval = FALSE, include = FALSE}
+
+  #GO enrichment using missMethyl
+  print(paste0("Enrichment analysis with ", i, " using FDR <= 0.05"))
+  sigCpGs <- chipPC %>%
+	  filter(adj.P.Val_chipPC <= 0.05) %>%
+	  pull(probeID)
+  length(sigCpGs)
+  allCpGs <- chipPC %>%
+	  filter(!is.na(adj.P.Val_chipPC)) %>%
+	  pull(probeID)
+  length(allCpGs)
+  gst <- gometh(sig.cpg = sigCpGs, all.cpg = allCpGs, collection = "GO")
+  DT::datatable(topGSA(gst, number = 20))
+
+  gst <- gometh(sig.cpg = sigCpGs, all.cpg = allCpGs, collection = "KEGG")
+  DT::datatable(topGSA(gst, number = 20))
+  
+  print(paste0("Enrichment analysis with ", i, " using FDR <= 0.1"))
+  sigCpGs <- chipPC %>%
+	  filter(adj.P.Val_chipPC <= 0.1) %>%
+	  pull(probeID)
+  length(sigCpGs)
+  allCpGs <- chipPC %>%
+	  filter(!is.na(adj.P.Val_chipPC)) %>%
+	  pull(probeID)
+  length(allCpGs)
+  gst <- gometh(sig.cpg = sigCpGs, all.cpg = allCpGs, collection = "GO")
+  DT::datatable(topGSA(gst, number = 20))
+
+  gst <- gometh(sig.cpg = sigCpGs, all.cpg = allCpGs, collection = "KEGG")
+  DT::datatable(topGSA(gst, number = 20))
+```
 
 # R session 
 
