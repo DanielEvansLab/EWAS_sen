@@ -772,6 +772,55 @@ topTable(fit2, coef = "SenMidasvNoSenNoMtPy", genelist = fit2$genes[,annot_cols]
     kable()
 
 
+# SVA on top of Combat
+combat_edataT <- t(combat_edata)
+e_df <- as.data.frame(combat_edataT)
+#remove probes with any missings because PCA fails with missings
+count_vals <- map_int(e_df, ~ sum(!is.na(.)))
+combat_edata_sva <- combat_edata[count_vals == 32, ]
+
+mod <- model.matrix(~treatment, data = pdat)
+mod0 <- model.matrix(~1, data = pdat)
+n.sv = num.sv(combat_edata_sva, mod, method = "leek")
+n.sv
+svobj <- sva(combat_edata_sva, mod, mod0, n.sv = n.sv)
+
+pdat <- pdat %>%
+	mutate(SV1 = svobj$sv[,1])
+
+#Probe analysis of combat and SVA edata
+design <- model.matrix(~0 + treatment + SV1, data = pdat)
+design
+colSums(design)
+
+cm <- makeContrasts(ATVvControl = treatmentsen_ATV - treatmentnoSen_ATV,
+		    SenMidasvNoSenMtnoPy = treatmentsen_noMt_noPy - treatmentnoSen_Mt_noPy,
+		    SenMidasvNoSenNoMtPy = treatmentsen_noMt_noPy - treatmentnoSen_noMt_Py,
+		    levels = design
+		    )
+fit <- lmFit(combat_edata, design)
+fit2 <- contrasts.fit(fit, contrasts = cm)
+fit2 <- eBayes(fit2)
+
+results <- decideTests(fit2)
+summary(results)
+vennDiagram(results)
+
+volcanoplot(fit2, coef = "ATVvControl" , main = "ATV vs control")
+
+annot_cols <- c("CpG_chrm", "CpG_beg", "probeID", "gene")
+topTable(fit2, coef = "ATVvControl", genelist = fit2$genes[,annot_cols], 
+	 p.value = 0.05, confint = TRUE) %>%
+	kable()
+
+topTable(fit2, coef = "SenMidasvNoSenMtnoPy", genelist = fit2$genes[,annot_cols], 
+	 p.value = 0.05, confint = TRUE) %>%
+    kable()
+
+topTable(fit2, coef = "SenMidasvNoSenNoMtPy", genelist = fit2$genes[,annot_cols], 
+	 p.value = 0.05, confint = TRUE) %>%
+    kable()
+
 ```
 
 
