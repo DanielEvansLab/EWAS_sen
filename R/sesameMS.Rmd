@@ -340,7 +340,7 @@ Multidimensional scaling using probes with most variance. Not the same as PCA. S
 plot_MDS <- function(mylabel, myeset){
 	group <- pData(myeset)[[mylabel]]
 	col.group <- group
-	levels(col.group) <- brewer.pal(nlevels(col.group), "Set1")
+	levels(col.group) <- brewer.pal(nlevels(col.group), "Set3")
 	col.group.ch <- as.character(col.group)
 	plotMDS(myeset, col = col.group.ch, gene.selection = "common", 
 		main = paste(mylabel, "labels"), pch = 16)
@@ -690,13 +690,17 @@ for(i in c("ATVvControl", "SenMidasvNoSenMtnoPy", "SenMidasvNoSenNoMtPy")){
 
 ```
 
-# Surrogate Variable Analysis
+# ComBat known batch effects
 
-Has potential to identify latent factors that are not overlapping with your factor of interest, i.e., treatment effect.
+Adjust for known batch effects with Combat. Clearly, plate is a batch effect. ComBat provides an empirical bayesian approach to output data adjusted for batches that is more effective than simply including batch in a regression model. 
 
-Identify known batch effects with Combat. 
+Two related problems.
 
-Identify unknown factors with SVA. 
+1. Removing batch effects with ComBat can introduce a correlation structure into the adjusted, batch-corrected data.
+   Specifically, correlation is induced between adjusted data points within a batch. See 
+   (https://www.biorxiv.org/content/biorxiv/early/2021/01/25/2021.01.24.428009.full.pdf). This is from Evan Johnson group, who developed SVA package.
+
+2. ATV sen and controls were done on one plate. The ComBat-induced correlation between data points within a batch/plate makes samples more similar, reducing the differential probe quantity between ATV sen and controls.
 
 
 ```{r cache = TRUE}
@@ -706,14 +710,24 @@ eset_Mvals_clean <- read_rds("../data/formatted/eset_Mvals_MS_clean.rds")
 e <- exprs(eset_Mvals_clean)
 pdat <- pData(eset_Mvals_clean)
 sum(colnames(e) != pdat$sampleID)
+pdat %>%
+	select(treatment, chip) %>%
+	arrange(chip, treatment) %>%
+	kable
+#Set treatment reference level to group not used in modeling
+pdat <- pdat %>%
+	mutate(treatment = relevel(treatment, ref = "noSen_Mt_Py"))
 
-design <- model.matrix(~1, data = pdat)
-design
-colSums(design)
+mod_combat <- model.matrix(~ 1, data = pdat)
+#Error if treatment included in model matrix. 
+#At least one treatment level confounded with batch.
+#mod_combat <- model.matrix(~ treatment, data = pdat)
+mod_combat
+colSums(mod_combat)
 
 combat_edata <- ComBat(dat = e, 
 		       batch = pdat$chip,
-		       mod = design,
+		       mod = mod_combat,
 		       par.prior = TRUE,
 		       prior.plots = FALSE)
 
@@ -739,57 +753,80 @@ print(p1)
 ggsave(p1, filename = "PCA_combat_treatment.pdf")
 
 #Probe analysis of combat edata
-design <- model.matrix(~0 + treatment, data = pdat)
-design
-colSums(design)
+mod <- model.matrix(~ 0 + treatment, data = pdat)
+mod
+colSums(mod)
 
 cm <- makeContrasts(ATVvControl = treatmentsen_ATV - treatmentnoSen_ATV,
 		    SenMidasvNoSenMtnoPy = treatmentsen_noMt_noPy - treatmentnoSen_Mt_noPy,
 		    SenMidasvNoSenNoMtPy = treatmentsen_noMt_noPy - treatmentnoSen_noMt_Py,
-		    levels = design
+		    levels = mod
 		    )
-fit <- lmFit(combat_edata, design)
+fit <- lmFit(combat_edata, mod)
 fit2 <- contrasts.fit(fit, contrasts = cm)
 fit2 <- eBayes(fit2)
-
 results <- decideTests(fit2)
 summary(results)
-vennDiagram(results)
 
-volcanoplot(fit2, coef = "ATVvControl" , main = "ATV vs control")
+#Evan Johnson on bioc support suggested also adjusting for batch in the model.
+#Can't do it. Chip and treatment collinear, coefficients can't be estimated. 
+#mod <- model.matrix(~ 0 + chip + treatment, data = pdat)
+#fit <- lmFit(combat_edata, mod)
+#fit2 <- contrasts.fit(fit, contrasts = cm)
+#fit2 <- eBayes(fit2)
+```
 
-annot_cols <- c("CpG_chrm", "CpG_beg", "probeID", "gene")
-topTable(fit2, coef = "ATVvControl", genelist = fit2$genes[,annot_cols], 
-	 p.value = 0.05, confint = TRUE) %>%
-	kable()
+# SVA instead of ComBat
 
-topTable(fit2, coef = "SenMidasvNoSenMtnoPy", genelist = fit2$genes[,annot_cols], 
-	 p.value = 0.05, confint = TRUE) %>%
-    kable()
+Surrogate Variable Analysis (SVA) can be used to identify unknown latent variables that explain unknown sources of variation independent of treatment effects of interest. 
+Has potential to identify latent factors that are not overlapping with your factor of interest, i.e., treatment effect.
 
-topTable(fit2, coef = "SenMidasvNoSenNoMtPy", genelist = fit2$genes[,annot_cols], 
-	 p.value = 0.05, confint = TRUE) %>%
-    kable()
+Attempts to create full/nested models failed due to rank deficient model matrix in the full model with chip and treatment.
+Rank deficiency caused by collinear variables. 
 
+So, I can't adjust for chip and perform SVA at the same time. But, adjusting for chip directly with ComBat makes ATV samples correlated and removes significant differences. 
 
-# SVA on top of Combat
-combat_edataT <- t(combat_edata)
-e_df <- as.data.frame(combat_edataT)
+Last thing - subset the data to only ATV samples. They were all on one chip, so no need to worry about chip after that. Estimate SVA in ATV only. Results? 
+
+```{r cache = TRUE}
+library(sva)
+
+eset_Mvals_clean <- read_rds("../data/formatted/eset_Mvals_MS_clean.rds")
+e <- exprs(eset_Mvals_clean)
+pdat <- pData(eset_Mvals_clean)
+sum(colnames(e) != pdat$sampleID)
+#Set treatment reference level to group not used in modeling
+pdat <- pdat %>%
+	mutate(treatment = relevel(treatment, ref = "noSen_Mt_Py"))
+
+mod <- model.matrix(~0 + chip + treatment, data = pdat)
+mod0 <- model.matrix(~0 + chip, data = pdat)
+#num.sv errors out. Rank deficient model. Complete overlap between treatment and chip. 
+#n.sv = num.sv(e, mod, method = "leek")
+dim(mod)
+qr(mod)$rank
+#which variables could I delete to achieve full rank
+colnames(mod)[which(sapply(1:9, function(x) qr(mod[,-x])$rank) == 8)]
+
+#Try SVA without chip, then adjust for chip in limma later
+#Remove missings
+e_sva <- t(e)
+e_df <- as.data.frame(e_sva)
 #remove probes with any missings because PCA fails with missings
 count_vals <- map_int(e_df, ~ sum(!is.na(.)))
-combat_edata_sva <- combat_edata[count_vals == 32, ]
-
+e_df <- e_df[,count_vals == 32]
+e_sva <- t(e_df)
 mod <- model.matrix(~treatment, data = pdat)
 mod0 <- model.matrix(~1, data = pdat)
-n.sv = num.sv(combat_edata_sva, mod, method = "leek")
+n.sv = num.sv(e_sva, mod, method = "leek")
 n.sv
-svobj <- sva(combat_edata_sva, mod, mod0, n.sv = n.sv)
+svobj <- sva(e_sva, mod, mod0, n.sv = n.sv)
 
 pdat <- pdat %>%
 	mutate(SV1 = svobj$sv[,1])
 
 #Probe analysis of combat and SVA edata
-design <- model.matrix(~0 + treatment + SV1, data = pdat)
+design <- model.matrix(~0 + chip + treatment + SV1, data = pdat)
 design
 colSums(design)
 
@@ -798,32 +835,50 @@ cm <- makeContrasts(ATVvControl = treatmentsen_ATV - treatmentnoSen_ATV,
 		    SenMidasvNoSenNoMtPy = treatmentsen_noMt_noPy - treatmentnoSen_noMt_Py,
 		    levels = design
 		    )
-fit <- lmFit(combat_edata, design)
-fit2 <- contrasts.fit(fit, contrasts = cm)
-fit2 <- eBayes(fit2)
-
-results <- decideTests(fit2)
-summary(results)
-vennDiagram(results)
-
-volcanoplot(fit2, coef = "ATVvControl" , main = "ATV vs control")
-
-annot_cols <- c("CpG_chrm", "CpG_beg", "probeID", "gene")
-topTable(fit2, coef = "ATVvControl", genelist = fit2$genes[,annot_cols], 
-	 p.value = 0.05, confint = TRUE) %>%
-	kable()
-
-topTable(fit2, coef = "SenMidasvNoSenMtnoPy", genelist = fit2$genes[,annot_cols], 
-	 p.value = 0.05, confint = TRUE) %>%
-    kable()
-
-topTable(fit2, coef = "SenMidasvNoSenNoMtPy", genelist = fit2$genes[,annot_cols], 
-	 p.value = 0.05, confint = TRUE) %>%
-    kable()
-
+#fit <- lmFit(e, design)
+#sen_ATV coefficient cannot be estimated. Chip and treatment singular.
+#Can't fit model. Too bad.
 ```
 
+# Subset to ATV only
 
+```{r cache = TRUE}
+#Subset to only include ATV samples
+keep <- pdat$treatment == "sen_ATV" | pdat$treatment == "noSen_ATV"
+keep
+eset_Mvals_clean <- eset_Mvals_clean[, keep]
+e <- exprs(eset_Mvals_clean)
+pdat <- pData(eset_Mvals_clean)
+pdat <- pdat %>%
+	mutate(ATV = ifelse(treatment == "sen_ATV", 1, 0))
+
+#Remove missings
+e_sva <- t(e)
+e_df <- as.data.frame(e_sva)
+#remove probes with any missings because SVA fails with missings
+count_vals <- map_int(e_df, ~ sum(!is.na(.)))
+e_df <- e_df[,count_vals == 8]
+e_sva <- t(e_df)
+mod <- model.matrix(~ATV, data = pdat)
+mod0 <- model.matrix(~1, data = pdat)
+n.sv = num.sv(e_sva, mod, method = "leek")
+n.sv
+svobj <- sva(e_sva, mod, mod0, n.sv = n.sv)
+
+pdat <- pdat %>%
+	mutate(SV1 = svobj$sv[,1],
+	       SV2 = svobj$sv[,2])
+
+design <- model.matrix(~ATV + SV1 + SV2, data = pdat)
+design
+colSums(design)
+fit <- lmFit(e, design)
+fit <- eBayes(fit)
+results <- decideTests(fit)
+summary(results)
+
+
+```
 
 
 
